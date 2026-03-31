@@ -1,316 +1,316 @@
 skills:
 - name: ab-test-setup
   description: Design, plan, and analyze A/B tests with statistical rigor
-  prompt: /ab-test-setup
+  skill_file: skills/ab-test-setup/SKILL.md
   max_turns: 30
 - name: affiliate-marketing
   description: Build and manage an affiliate marketing program
-  prompt: /affiliate-marketing
+  skill_file: skills/affiliate-marketing/SKILL.md
   max_turns: 30
 - name: aframe-webxr
   description: Declarative web framework for building browser-based 3D, VR, and AR experiences using HTML and entity-component
     architecture. Use this skill when creating WebXR applications, VR experiences, AR experiences, 360-degree media viewers,
     or immersive web content with minimal JavaScript
-  prompt: /aframe-webxr
+  skill_file: skills/aframe-webxr/SKILL.md
   max_turns: 30
 - name: ahrefs-research
   description: Use the Ahrefs Python SDK to pull SEO data — backlinks, keywords, domain ratings, organic traffic, site audits,
     rank tracking, and brand monitoring
-  prompt: /ahrefs-research
+  skill_file: skills/ahrefs-research/SKILL.md
   max_turns: 30
 - name: ai-image-gen
   description: Generate images from text prompts using OpenAI GPT Image (gpt-image-1) or Stability AI (SD 3.5 Large)
-  prompt: /ai-image-gen
+  skill_file: skills/ai-image-gen/SKILL.md
   max_turns: 30
 - name: animated-component-libraries
   description: Pre-built animated React component collections combining Magic UI (150+ TypeScript/Tailwind/Motion components)
     and React Bits (90+ minimal-dependency animated components). Use this skill when building landing pages, marketing sites,
     dashboards, or interactive UIs requiring pre-made animated components instead of hand-crafting animations
-  prompt: /animated-component-libraries
+  skill_file: skills/animated-component-libraries/SKILL.md
   max_turns: 30
 - name: animejs
   description: Versatile JavaScript animation engine for DOM, CSS, SVG, and JavaScript objects
-  prompt: /animejs
+  skill_file: skills/animejs/SKILL.md
   max_turns: 30
 - name: apollo-outreach
   description: Research and enrich B2B leads using the Apollo.io API
-  prompt: /apollo-outreach
+  skill_file: skills/apollo-outreach/SKILL.md
   max_turns: 30
 - name: babylonjs-engine
   description: Comprehensive skill for Babylon.js 3D web rendering engine. Use this skill when building real-time 3D experiences,
     browser-based games, interactive visualizations, or immersive web applications
-  prompt: /babylonjs-engine
+  skill_file: skills/babylonjs-engine/SKILL.md
   max_turns: 30
 - name: backlink-audit
   description: Audit a domain's backlink profile using the SemRush API
-  prompt: /backlink-audit
+  skill_file: skills/backlink-audit/SKILL.md
   max_turns: 30
 - name: barba-js
   description: Page transitions library for creating fluid, smooth transitions between website pages. Use this skill when
     implementing page transitions, creating SPA-like experiences, adding animated route changes, or building websites with
     smooth navigation
-  prompt: /barba-js
+  skill_file: skills/barba-js/SKILL.md
   max_turns: 30
 - name: blender-web-pipeline
   description: Blender to web export workflows for 3D models and animations. Use this skill when exporting Blender models
     to glTF for web, optimizing 3D assets for Three.js or Babylon.js, batch processing models with Python scripts, automating
     Blender workflows, or creating web-ready 3D pipelines
-  prompt: /blender-web-pipeline
+  skill_file: skills/blender-web-pipeline/SKILL.md
   max_turns: 30
 - name: bluesky
   description: Create and manage content for Bluesky social network
-  prompt: /bluesky
+  skill_file: skills/bluesky/SKILL.md
   max_turns: 30
 - name: bmad
   description: BMad-Method (Breakthrough Method of Agile AI-driven Development) framework guide. Teaches how to orchestrate
     specialized AI agents through structured workflows to build software
-  prompt: /bmad
+  skill_file: skills/bmad/SKILL.md
   max_turns: 30
 - name: brand-monitor
   description: Brand monitoring and mention tracking via the Brand.dev API
-  prompt: /brand-monitor
+  skill_file: skills/brand-monitor/SKILL.md
   max_turns: 30
 - name: brand-research
   description: Fetch brand info (name, description, logos, colors, industry) from the brand.dev API
-  prompt: /brand-research
+  skill_file: skills/brand-research/SKILL.md
   max_turns: 30
 - name: competitor-analysis
   description: Conduct full competitor strategy breakdowns across SEO, ads, social, email, pricing, and positioning
-  prompt: /competitor-analysis
+  skill_file: skills/competitor-analysis/SKILL.md
   max_turns: 30
 - name: content-calendar
   description: Plan and schedule social media and content marketing calendars. Monthly and weekly planning, content mix ratios,
     theme days, platform-specific timing, and batch creation workflows
-  prompt: /content-calendar
+  skill_file: skills/content-calendar/SKILL.md
   max_turns: 30
 - name: content-gap-analysis
   description: Identify content gaps between your site and competitors
-  prompt: /content-gap-analysis
+  skill_file: skills/content-gap-analysis/SKILL.md
   max_turns: 30
 - name: content-repurposing
   description: Repurpose and atomize content across platforms and formats
-  prompt: /content-repurposing
+  skill_file: skills/content-repurposing/SKILL.md
   max_turns: 30
 - name: content-strategy
   description: Build content strategies, editorial calendars, topic clusters, and content plans. Map content to buyer journey
     stages and plan distribution
-  prompt: /content-strategy
+  skill_file: skills/content-strategy/SKILL.md
   max_turns: 30
 - name: copy-editing
   description: Line-by-line copy editing and improvement for marketing content. Polish existing copy for clarity, conciseness,
     impact, and conversion
-  prompt: /copy-editing
+  skill_file: skills/copy-editing/SKILL.md
   max_turns: 30
 - name: copywriting
   description: 'Write marketing copy for any page type: landing pages, product pages, about pages, sales pages, ads, and more'
-  prompt: /copywriting
+  skill_file: skills/copywriting/SKILL.md
   max_turns: 30
 - name: dart-flutter-mcp
   description: Provides Flutter and Dart development workflows using dart-mcp tools
-  prompt: /dart-flutter-mcp
+  skill_file: skills/dart-flutter-mcp/SKILL.md
   max_turns: 30
 - name: demand-gen
   description: Build a demand generation strategy and multi-channel campaigns
-  prompt: /demand-gen
+  skill_file: skills/demand-gen/SKILL.md
   max_turns: 30
 - name: discord-bot
   description: Send messages, embeds, and marketing content to Discord channels via webhooks or bot API. Manage community
     engagement, announcements, and automated posting
-  prompt: /discord-bot
+  skill_file: skills/discord-bot/SKILL.md
   max_turns: 30
 - name: domain-research
   description: Research domain WHOIS data and check marketplace listings
-  prompt: /domain-research
+  skill_file: skills/domain-research/SKILL.md
   max_turns: 30
 - name: email-sequence
   description: Create email drip campaigns, nurture sequences, and automated email flows. Includes templates for welcome series,
     abandoned cart, re-engagement, product launch, and onboarding sequences
-  prompt: /email-sequence
+  skill_file: skills/email-sequence/SKILL.md
   max_turns: 30
 - name: email-subject-lines
   description: Generate, evaluate, and A/B test email subject lines for maximum open rates. Includes formulas for curiosity,
     urgency, personalization, and more
-  prompt: /email-subject-lines
+  skill_file: skills/email-subject-lines/SKILL.md
   max_turns: 30
 - name: facebook-ads
   description: Create Facebook and Meta ad campaigns, write ad copy, define audiences, and plan budgets
-  prompt: /facebook-ads
+  skill_file: skills/facebook-ads/SKILL.md
   max_turns: 30
 - name: feishu-lark
   description: Send messages and interactive cards to Feishu (飞书) and Lark channels via webhooks or Bot API. Create rich-text
     announcements, marketing updates, and team notifications
-  prompt: /feishu-lark
+  skill_file: skills/feishu-lark/SKILL.md
   max_turns: 30
 - name: google-ads
   description: Write Google Ads copy and build campaign structures
-  prompt: /google-ads
+  skill_file: skills/google-ads/SKILL.md
   max_turns: 30
 - name: google-ads-report
   description: Pull Google Ads performance data and generate reports
-  prompt: /google-ads-report
+  skill_file: skills/google-ads-report/SKILL.md
   max_turns: 30
 - name: google-analytics
   description: Pull GA4 reports, traffic data, and insights from the Google Analytics Data API
-  prompt: /google-analytics
+  skill_file: skills/google-analytics/SKILL.md
   max_turns: 30
 - name: google-reviews
   description: Fetch Google Maps ratings, review counts, and rating distributions for any business using the DataForSEO API
-  prompt: /google-reviews
+  skill_file: skills/google-reviews/SKILL.md
   max_turns: 30
 - name: growth-strategy
   description: Build a growth strategy with frameworks, metrics, and experimentation
-  prompt: /growth-strategy
+  skill_file: skills/growth-strategy/SKILL.md
   max_turns: 30
 - name: gsap-scrolltrigger
   description: Comprehensive skill for GSAP (GreenSock Animation Platform) and ScrollTrigger plugin. Use this skill when creating
     web animations, scroll-driven experiences, timelines, tweens, scroll-triggered animations, pinning, scrubbing, parallax
     effects, or animating DOM elements, SVG, Canvas, WebGL, or Three.js
-  prompt: /gsap-scrolltrigger
+  skill_file: skills/gsap-scrolltrigger/SKILL.md
   max_turns: 30
 - name: hubspot
   description: Manage HubSpot CRM contacts, companies, deals, and CMS content via API
-  prompt: /hubspot
+  skill_file: skills/hubspot/SKILL.md
   max_turns: 30
 - name: i18n
   description: Add full internationalization (i18n) to a Next.js project using next-intl. Supports 14+ languages, SEO-friendly
     locale routing, hreflang sitemaps, and bulk translation
-  prompt: /i18n
+  skill_file: skills/i18n/SKILL.md
   max_turns: 30
 - name: icp-builder
   description: Define ideal customer profiles and buyer personas with structured frameworks
-  prompt: /icp-builder
+  skill_file: skills/icp-builder/SKILL.md
   max_turns: 30
 - name: keyword-research
   description: Perform keyword research using the SemRush API
-  prompt: /keyword-research
+  skill_file: skills/keyword-research/SKILL.md
   max_turns: 30
 - name: launch-strategy
   description: Plan and execute product launches with week-by-week timelines and channel-specific playbooks
-  prompt: /launch-strategy
+  skill_file: skills/launch-strategy/SKILL.md
   max_turns: 30
 - name: lead-magnet
   description: Create lead magnets and gated content to capture email subscribers and leads
-  prompt: /lead-magnet
+  skill_file: skills/lead-magnet/SKILL.md
   max_turns: 30
 - name: lightweight-3d-effects
   description: Lightweight 3D effects for decorative elements and micro-interactions using Zdog, Vanta.js, and Vanilla-Tilt.js.
     Use this skill when adding pseudo-3D illustrations, animated backgrounds, parallax tilt effects, decorative 3D elements,
     or subtle depth effects without heavy frameworks
-  prompt: /lightweight-3d-effects
+  skill_file: skills/lightweight-3d-effects/SKILL.md
   max_turns: 30
 - name: linkedin-ads
   description: Create LinkedIn ad campaigns, write sponsored content, define professional audiences, and plan B2B advertising
     budgets
-  prompt: /linkedin-ads
+  skill_file: skills/linkedin-ads/SKILL.md
   max_turns: 30
 - name: linkedin-content
   description: Create high-performing LinkedIn posts and content strategy
-  prompt: /linkedin-content
+  skill_file: skills/linkedin-content/SKILL.md
   max_turns: 30
 - name: locomotive-scroll
   description: Comprehensive skill for Locomotive Scroll smooth scrolling library with parallax effects, viewport detection,
     and scroll-driven animations. Use this skill when implementing smooth scrolling experiences, creating parallax effects,
     building scroll-triggered animations, or developing immersive scrolling websites
-  prompt: /locomotive-scroll
+  skill_file: skills/locomotive-scroll/SKILL.md
   max_turns: 30
 - name: lottie-animations
   description: After Effects animation rendering for web and React applications. Use this skill when implementing Lottie animations,
     JSON vector animations, interactive animated icons, micro-interactions, or loading animations
-  prompt: /lottie-animations
+  skill_file: skills/lottie-animations/SKILL.md
   max_turns: 30
 - name: marketing-ideas
   description: 139 proven marketing ideas organized by category with implementation guidance
-  prompt: /marketing-ideas
+  skill_file: skills/marketing-ideas/SKILL.md
   max_turns: 30
 - name: modern-web-design
   description: Modern web design trends, principles, and implementation patterns for 2024-2025. Use this skill when designing
     websites, creating interactive experiences, implementing design systems, ensuring accessibility, or building performance-first
     interfaces
-  prompt: /modern-web-design
+  skill_file: skills/modern-web-design/SKILL.md
   max_turns: 30
 - name: motion-framer
   description: Modern animation library for React and JavaScript. Create smooth, production-ready animations with motion components,
     variants, gestures (hover/tap/drag), layout animations, AnimatePresence exit animations, spring physics, and scroll-based
     effects
-  prompt: /motion-framer
+  skill_file: skills/motion-framer/SKILL.md
   max_turns: 30
 - name: newsletter
   description: Plan and grow an email newsletter
-  prompt: /newsletter
+  skill_file: skills/newsletter/SKILL.md
   max_turns: 30
 - name: onboarding-cro
   description: Improve user onboarding flows to increase activation and retention
-  prompt: /onboarding-cro
+  skill_file: skills/onboarding-cro/SKILL.md
   max_turns: 30
 - name: page-cro
   description: Audit and optimize landing pages for conversion rate
-  prompt: /page-cro
+  skill_file: skills/page-cro/SKILL.md
   max_turns: 30
 - name: pixijs-2d
   description: Fast, lightweight 2D rendering engine for creating interactive graphics, particle effects, and canvas-based
     applications using WebGL/WebGPU. Use this skill when building 2D games, particle systems, interactive canvases, sprite
     animations, or UI overlays on 3D scenes
-  prompt: /pixijs-2d
+  skill_file: skills/pixijs-2d/SKILL.md
   max_turns: 30
 - name: playcanvas-engine
   description: Lightweight WebGL/WebGPU game engine with entity-component architecture and visual editor integration. Use
     this skill when building browser-based games, interactive 3D applications, or performance-critical web experiences
-  prompt: /playcanvas-engine
+  skill_file: skills/playcanvas-engine/SKILL.md
   max_turns: 30
 - name: podcast-marketing
   description: Plan, produce, and market a podcast
-  prompt: /podcast-marketing
+  skill_file: skills/podcast-marketing/SKILL.md
   max_turns: 30
 - name: pricing-strategy
   description: Optimize pricing pages, pricing models, and pricing strategy
-  prompt: /pricing-strategy
+  skill_file: skills/pricing-strategy/SKILL.md
   max_turns: 30
 - name: product-marketing
   description: Build product marketing strategy including positioning, messaging, and go-to-market
-  prompt: /product-marketing
+  skill_file: skills/product-marketing/SKILL.md
   max_turns: 30
 - name: programmatic-seo
   description: Create SEO-optimized pages at scale using programmatic/template-based approaches
-  prompt: /programmatic-seo
+  skill_file: skills/programmatic-seo/SKILL.md
   max_turns: 30
 - name: react-spring-physics
   description: Physics-based animation library combining React Spring (spring dynamics, gesture integration, 60fps animations)
     and Popmotion (low-level composable animation utilities, reactive streams)
-  prompt: /react-spring-physics
+  skill_file: skills/react-spring-physics/SKILL.md
   max_turns: 30
 - name: react-three-fiber
   description: Build declarative 3D scenes with React Three Fiber (R3F) - a React renderer for Three.js
-  prompt: /react-three-fiber
+  skill_file: skills/react-three-fiber/SKILL.md
   max_turns: 30
 - name: reddit-marketing
   description: Market and engage on Reddit authentically
-  prompt: /reddit-marketing
+  skill_file: skills/reddit-marketing/SKILL.md
   max_turns: 30
 - name: referral-program
   description: Design referral programs and viral growth loops
-  prompt: /referral-program
+  skill_file: skills/referral-program/SKILL.md
   max_turns: 30
 - name: rive-interactive
   description: State machine-based vector animation with runtime interactivity and web integration. Use this skill when creating
     interactive animations, state-driven UI, animated components with logic, or designer-created animations with runtime control
-  prompt: /rive-interactive
+  skill_file: skills/rive-interactive/SKILL.md
   max_turns: 30
 - name: schema-markup
   description: Generate Schema.org structured data (JSON-LD) for any page type
-  prompt: /schema-markup
+  skill_file: skills/schema-markup/SKILL.md
   max_turns: 30
 - name: scroll-reveal-libraries
   description: Simple scroll-triggered reveal animations using AOS (Animate On Scroll). Use this skill when building marketing
     pages, landing pages, or content-heavy sites requiring basic fade/slide effects without complex animation orchestration
-  prompt: /scroll-reveal-libraries
+  skill_file: skills/scroll-reveal-libraries/SKILL.md
   max_turns: 30
 - name: search-console
   description: Pull Google Search Console data and perform search performance analysis
-  prompt: /search-console
+  skill_file: skills/search-console/SKILL.md
   max_turns: 30
 - name: semrush-research
   description: SEO and competitive intelligence via the SemRush API
-  prompt: /semrush-research
+  skill_file: skills/semrush-research/SKILL.md
   max_turns: 30
 - name: seo
   description: Comprehensive SEO analysis for any website or business type. Performs full site audits, single-page deep analysis,
@@ -319,137 +319,137 @@ skills:
     sitemap analysis, and Generative Engine Optimization (GEO) for AI Overviews, ChatGPT, and Perplexity citations. Analyzes
     AI crawler accessibility (GPTBot, ClaudeBot, PerplexityBot), llms.txt compliance, brand mention signals, and passage-level
     citability. Industry detection for SaaS, e-commerce, local business, publishers, agencies
-  prompt: /seo
+  skill_file: skills/seo/SKILL.md
   max_turns: 30
 - name: seo-audit
   description: Run a full technical and on-page SEO audit on any website or page
-  prompt: /seo-audit
+  skill_file: skills/seo-audit/SKILL.md
   max_turns: 30
 - name: seo-competitor-pages
   description: Generate SEO-optimized competitor comparison and alternatives pages. Covers "X vs Y" layouts, "alternatives
     to X" pages, feature matrices, schema markup, and conversion optimization
-  prompt: /seo-competitor-pages
+  skill_file: skills/seo-competitor-pages/SKILL.md
   max_turns: 30
 - name: seo-content
   description: Content quality and E-E-A-T analysis with AI citation readiness assessment
-  prompt: /seo-content
+  skill_file: skills/seo-content/SKILL.md
   max_turns: 30
 - name: seo-content-brief
   description: Create an SEO content brief for writers
-  prompt: /seo-content-brief
+  skill_file: skills/seo-content-brief/SKILL.md
   max_turns: 30
 - name: seo-geo
   description: Optimize content for AI Overviews (formerly SGE), ChatGPT web search, Perplexity, and other AI-powered search
     experiences. Generative Engine Optimization (GEO) analysis including brand mention signals, AI crawler accessibility,
     llms.txt compliance, passage-level citability scoring, and platform-specific optimization
-  prompt: /seo-geo
+  skill_file: skills/seo-geo/SKILL.md
   max_turns: 30
 - name: seo-hreflang
   description: Hreflang and international SEO audit, validation, and generation. Detects common mistakes, validates language/region
     codes, and generates correct hreflang implementations
-  prompt: /seo-hreflang
+  skill_file: skills/seo-hreflang/SKILL.md
   max_turns: 30
 - name: seo-images
   description: Image optimization analysis for SEO and performance. Checks alt text, file sizes, formats, responsive images,
     lazy loading, and CLS prevention
-  prompt: /seo-images
+  skill_file: skills/seo-images/SKILL.md
   max_turns: 30
 - name: seo-page
   description: Deep single-page SEO analysis covering on-page elements, content quality, technical meta tags, schema, images,
     and performance
-  prompt: /seo-page
+  skill_file: skills/seo-page/SKILL.md
   max_turns: 30
 - name: seo-plan
   description: Strategic SEO planning for new or existing websites. Industry-specific templates, competitive analysis, content
     strategy, and implementation roadmap
-  prompt: /seo-plan
+  skill_file: skills/seo-plan/SKILL.md
   max_turns: 30
 - name: seo-programmatic
   description: Programmatic SEO planning and analysis for pages generated at scale from data sources. Covers template engines,
     URL patterns, internal linking automation, thin content safeguards, and index bloat prevention
-  prompt: /seo-programmatic
+  skill_file: skills/seo-programmatic/SKILL.md
   max_turns: 30
 - name: seo-schema
   description: Detect, validate, and generate Schema.org structured data. JSON-LD format preferred
-  prompt: /seo-schema
+  skill_file: skills/seo-schema/SKILL.md
   max_turns: 30
 - name: seo-sitemap
   description: Analyze existing XML sitemaps or generate new ones with industry templates. Validates format, URLs, and structure
-  prompt: /seo-sitemap
+  skill_file: skills/seo-sitemap/SKILL.md
   max_turns: 30
 - name: seo-technical
   description: 'Technical SEO audit across 8 categories: crawlability, indexability, security, URL structure, mobile, Core
     Web Vitals, structured data, and JavaScript rendering'
-  prompt: /seo-technical
+  skill_file: skills/seo-technical/SKILL.md
   max_turns: 30
 - name: serp-analyzer
   description: Analyze Google search results (SERP) for any keyword
-  prompt: /serp-analyzer
+  skill_file: skills/serp-analyzer/SKILL.md
   max_turns: 30
 - name: signup-flow-cro
   description: Optimize signup and registration conversion funnels
-  prompt: /signup-flow-cro
+  skill_file: skills/signup-flow-cro/SKILL.md
   max_turns: 30
 - name: slack-bot
   description: Send messages and rich content to Slack channels via webhooks or Bot API. Use Block Kit for formatted announcements,
     marketing reports, and community updates
-  prompt: /slack-bot
+  skill_file: skills/slack-bot/SKILL.md
   max_turns: 30
 - name: social-content
   description: Create and publish social media posts for Reddit, Twitter/X, LinkedIn, Instagram, Facebook, and TikTok. Platform-specific
     formats, character limits, hashtag strategies, hooks, and content repurposing. Can post directly to Reddit and other platforms
     via API
-  prompt: /social-content
+  skill_file: skills/social-content/SKILL.md
   max_turns: 30
 - name: spline-interactive
   description: Browser-based 3D design tool with visual editor, animation, and web export. Use this skill when creating 3D
     scenes without code, designing interactive web experiences, prototyping 3D UI, exporting to React/web, or building designer-friendly
     3D content
-  prompt: /spline-interactive
+  skill_file: skills/spline-interactive/SKILL.md
   max_turns: 30
 - name: stock-images
   description: Search Unsplash for stock photos and download them. Optionally add text overlay (title/subtitle)
-  prompt: /stock-images
+  skill_file: skills/stock-images/SKILL.md
   max_turns: 30
 - name: substance-3d-texturing
   description: Comprehensive skill for Adobe Substance 3D Painter texturing and material creation workflow. Use this skill
     when creating PBR materials, exporting textures for web/game engines, optimizing 3D assets for real-time rendering, or
     automating texture workflows
-  prompt: /substance-3d-texturing
+  skill_file: skills/substance-3d-texturing/SKILL.md
   max_turns: 30
 - name: telegram-bot
   description: Send messages, images, and marketing content to Telegram channels and groups via Bot API. Create formatted
     posts, polls, and media content for Telegram communities
-  prompt: /telegram-bot
+  skill_file: skills/telegram-bot/SKILL.md
   max_turns: 30
 - name: thread-writer
   description: Write viral Twitter/X threads and Reddit posts with proven structures, hooks, and engagement tactics. Includes
     templates for story threads, listicle threads, contrarian takes, tutorials, and case studies. Can post directly to Reddit
-  prompt: /thread-writer
+  skill_file: skills/thread-writer/SKILL.md
   max_turns: 30
 - name: threejs-webgl
   description: Comprehensive skill for Three.js 3D web development. Use this skill when building interactive 3D scenes, WebGL/WebGPU
     applications, product configurators, 3D visualizations, or immersive web experiences
-  prompt: /threejs-webgl
+  skill_file: skills/threejs-webgl/SKILL.md
   max_turns: 30
 - name: video-ad-analysis
   description: Deconstruct and analyze video ad creatives for marketing insights
-  prompt: /video-ad-analysis
+  skill_file: skills/video-ad-analysis/SKILL.md
   max_turns: 30
 - name: web3d-integration-patterns
   description: Meta-skill for combining Three.js, GSAP ScrollTrigger, React Three Fiber, Motion, and React Spring for complex
     3D web experiences
-  prompt: /web3d-integration-patterns
+  skill_file: skills/web3d-integration-patterns/SKILL.md
   max_turns: 30
 - name: write-blog
   description: Generate a full SEO-optimized blog post
-  prompt: /write-blog
+  skill_file: skills/write-blog/SKILL.md
   max_turns: 30
 - name: write-landing
   description: Create high-converting landing page copy and structure
-  prompt: /write-landing
+  skill_file: skills/write-landing/SKILL.md
   max_turns: 30
 - name: youtube-analytics
   description: Analyze YouTube channel and video performance using the YouTube Data API
-  prompt: /youtube-analytics
+  skill_file: skills/youtube-analytics/SKILL.md
   max_turns: 30
