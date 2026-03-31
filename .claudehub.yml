@@ -1,17 +1,15 @@
 skills:
   - name: carespace-code-review
     description: "Autonomous PR security review — HIPAA/OWASP audit + code quality, posts findings as PR comment"
-    skill_file: skills/code-review-orchestrator/SKILL.md
+    prompt: "/carespace-code-review"
     max_turns: 30
-    required_secrets:
-      - GITHUB_TOKEN
 
   - name: carespace-security-auditor
     description: "Security vulnerability detection — HIPAA, OWASP Top 10, Azure, NestJS/Prisma/React/Flutter"
-    skill_file: skills/security-auditor/SKILL.md
+    prompt: "/carespace-security-auditor"
     max_turns: 30
 
   - name: carespace-security-standards
     description: "Reference skill — CareSpace security standards, HIPAA rules, OWASP healthcare context"
-    skill_file: skills/code-standards-base/SKILL.md
+    prompt: "/carespace-security-standards"
     max_turns: 10
