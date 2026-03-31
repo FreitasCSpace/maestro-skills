@@ -1,55 +1,37 @@
-# ClaudeHub Skills Repository
+# ClaudeHub Skills
 
-This repository contains skill definitions for ClaudeHub — a Claude Code skill orchestrator.
+98 native Claude Code skills available for orchestration via ClaudeHub.
 
-## How Skills Work
+Each skill maps directly to an installed Claude Code slash command (`/skill-name`).
+When triggered from ClaudeHub, the skill runs as a full Claude Code session with
+complete tool access — Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, MCP tools, and more.
 
-Each skill is defined in `.claudehub.yml` and represents an autonomous Claude Code session.
-When triggered from ClaudeHub, the skill prompt is sent to `claude -p` which executes it
-with full tool access (Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch).
+## Categories
 
-## Skill Types
+### SEO & Content (20 skills)
+seo, seo-audit, seo-content, seo-content-brief, seo-geo, seo-hreflang, seo-images, seo-page, seo-plan, seo-programmatic, seo-schema, seo-sitemap, seo-technical, seo-competitor-pages, serp-analyzer, keyword-research, content-gap-analysis, content-strategy, write-blog, schema-markup
 
-- **SEO & Content** — Site audits, keyword research, blog writing, content briefs
-- **Code & Security** — Code review, dependency audit, test generation
-- **Documentation** — README generation, API docs
-- **DevOps** — Dockerization, CI/CD pipeline generation
-- **Marketing** — Social content, competitor analysis, landing pages
-- **Data & Research** — Codebase analysis, migration planning
+### Marketing & Growth (25 skills)
+competitor-analysis, copywriting, copy-editing, content-calendar, content-repurposing, demand-gen, email-sequence, email-subject-lines, facebook-ads, google-ads, google-ads-report, growth-strategy, icp-builder, launch-strategy, lead-magnet, linkedin-ads, linkedin-content, marketing-ideas, newsletter, page-cro, onboarding-cro, pricing-strategy, product-marketing, referral-program, signup-flow-cro
 
-## Adding New Skills
+### Social & Channels (10 skills)
+social-content, thread-writer, reddit-marketing, bluesky, podcast-marketing, slack-bot, discord-bot, telegram-bot, feishu-lark, youtube-analytics
 
-Add entries to `.claudehub.yml`:
+### Analytics & Research (8 skills)
+google-analytics, search-console, semrush-research, ahrefs-research, backlink-audit, brand-monitor, brand-research, domain-research, google-reviews
 
-```yaml
-skills:
-  - name: my-skill-name
-    description: What this skill does
-    prompt: "The instruction sent to Claude Code"
-    max_turns: 20
-```
+### Advertising (3 skills)
+facebook-ads, google-ads, linkedin-ads
 
-### Placeholders
+### Development & 3D (20+ skills)
+dart-flutter-mcp, animated-component-libraries, react-three-fiber, threejs-webgl, babylonjs-engine, gsap-scrolltrigger, motion-framer, pixijs-2d, and more
 
-Use `{variable}` in prompts — ClaudeHub will prompt for these when triggering a run:
+### Business Tools (5 skills)
+hubspot, apollo-outreach, ab-test-setup, affiliate-marketing, video-ad-analysis
 
-```yaml
-prompt: "/seo-audit {url}"          # User provides the URL
-prompt: "Migrate to {target}"       # User provides target framework
-```
-
-### Slash Commands
-
-Skills can invoke any Claude Code skill/slash command:
-
-```yaml
-prompt: "/seo-technical {url}"      # Invokes the seo-technical skill
-prompt: "/write-blog {keyword}"     # Invokes the write-blog skill
-```
-
-## Running Skills
+## How It Works
 
 1. Connect this repo in ClaudeHub → Repositories
-2. ClaudeHub auto-detects skills from `.claudehub.yml`
-3. Go to Runs → trigger any skill
-4. Skills can be scheduled via cron, webhook, or chain triggers
+2. ClaudeHub reads `.claudehub.yml` and registers all 98 skills
+3. Trigger any skill from Runs page, schedule it, or chain skills together
+4. Each skill runs as an autonomous Claude Code session
