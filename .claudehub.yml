@@ -1,0 +1,91 @@
+skills:
+  # ── SEO & Content ──────────────────────────────────────────────────────
+  - name: seo-full-audit
+    description: Run a comprehensive SEO audit on any website
+    prompt: "/seo-audit {url}"
+    max_turns: 30
+
+  - name: seo-technical
+    description: Technical SEO check — crawlability, indexability, Core Web Vitals
+    prompt: "/seo-technical {url}"
+    max_turns: 20
+
+  - name: seo-content-brief
+    description: Generate an SEO content brief for writers targeting a keyword
+    prompt: "/seo-content-brief {keyword}"
+    max_turns: 15
+
+  - name: write-blog
+    description: Write a full SEO-optimized blog post for a target keyword
+    prompt: "/write-blog {keyword}"
+    max_turns: 25
+
+  - name: keyword-research
+    description: Find keyword opportunities for a topic or niche
+    prompt: "/keyword-research {topic}"
+    max_turns: 15
+
+  # ── Code & Security ────────────────────────────────────────────────────
+  - name: code-review
+    description: Review code in this repo for bugs, security issues, and best practices
+    prompt: "Review all code in this repository. Focus on security vulnerabilities (OWASP top 10), bugs, performance issues, and code quality. Provide specific file:line references and fixes."
+    max_turns: 30
+
+  - name: dependency-audit
+    description: Audit dependencies for known vulnerabilities and outdated packages
+    prompt: "Audit all dependencies in this project. Check package.json, pyproject.toml, requirements.txt, or similar files. Identify outdated packages, known CVEs, and suggest upgrades. Use the Read and Bash tools to check versions."
+    max_turns: 20
+
+  - name: generate-tests
+    description: Generate unit tests for uncovered code
+    prompt: "Analyze the codebase and generate unit tests for functions and modules that lack test coverage. Write the tests to files. Use the project's existing test framework and patterns."
+    max_turns: 30
+
+  # ── Documentation ──────────────────────────────────────────────────────
+  - name: generate-readme
+    description: Generate or update README.md based on the actual codebase
+    prompt: "Read the entire project structure and generate a comprehensive README.md. Include: project description, features, installation, usage, configuration, API endpoints (if any), and architecture overview. Base everything on actual code, not assumptions."
+    max_turns: 20
+
+  - name: generate-api-docs
+    description: Generate API documentation from source code
+    prompt: "Scan the codebase for API endpoints (REST, GraphQL, RPC). Generate comprehensive API documentation in Markdown format. Include: endpoint URL, method, parameters, request/response examples, and authentication requirements. Write to docs/api.md."
+    max_turns: 25
+
+  # ── DevOps & Infrastructure ────────────────────────────────────────────
+  - name: dockerize
+    description: Create or improve Docker setup for this project
+    prompt: "Analyze this project and create a production-ready Docker setup. Include Dockerfile (multi-stage if applicable), docker-compose.yml, .dockerignore, and health checks. Follow best practices for the detected language/framework."
+    max_turns: 20
+
+  - name: ci-pipeline
+    description: Generate GitHub Actions CI/CD pipeline
+    prompt: "Create a GitHub Actions CI/CD pipeline for this project. Include: lint, test, build, and deploy stages. Detect the project language and framework to use appropriate tools. Write to .github/workflows/ci.yml."
+    max_turns: 15
+
+  # ── Marketing & Content ────────────────────────────────────────────────
+  - name: social-content
+    description: Create social media posts from content in this repo
+    prompt: "/social-content Create engaging social media posts (Twitter/X, LinkedIn, Instagram) based on the content in this repository. Adapt tone and format for each platform."
+    max_turns: 15
+
+  - name: competitor-analysis
+    description: Analyze competitors for a business or product
+    prompt: "/competitor-analysis {company}"
+    max_turns: 25
+
+  - name: landing-page-copy
+    description: Write high-converting landing page copy
+    prompt: "/write-landing {product_description}"
+    max_turns: 20
+
+  # ── Data & Research ────────────────────────────────────────────────────
+  - name: codebase-analysis
+    description: Deep analysis of codebase architecture, patterns, and tech debt
+    prompt: "Perform a comprehensive analysis of this codebase. Cover: architecture patterns, dependency graph, code quality metrics, tech debt areas, test coverage gaps, and improvement recommendations. Write findings to docs/codebase-analysis.md."
+    max_turns: 30
+
+  - name: migration-plan
+    description: Plan a migration strategy (framework, language, or infrastructure)
+    prompt: "Analyze this codebase and create a detailed migration plan to {target}. Include: current state assessment, migration phases, risk analysis, rollback strategy, and estimated effort per phase. Write to docs/migration-plan.md."
+    max_turns: 25
