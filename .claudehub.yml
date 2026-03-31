@@ -1,38 +1,17 @@
 skills:
-- name: dast-scan
-  description: "Dynamic application security testing \u2014 probe running endpoints for vulnerabilities."
-  skill_file: skills/dast-scan/SKILL.md
-  max_turns: 30
-- name: dependency-audit
-  description: Audit all project dependencies for CVEs, outdated packages, and license issues.
-  skill_file: skills/dependency-audit/SKILL.md
-  max_turns: 30
-- name: docker-security-audit
-  description: Audit Docker and container infrastructure for security misconfigurations.
-  skill_file: skills/docker-security-audit/SKILL.md
-  max_turns: 30
-- name: hipaa-compliance-check
-  description: "HIPAA compliance audit for healthcare applications \u2014 PHI handling, encryption, access controls, audit\
-    \ trails."
-  skill_file: skills/hipaa-compliance-check/SKILL.md
-  max_turns: 30
-- name: pr-security-review
-  description: "Autonomous security review of GitHub PRs \u2014 HIPAA, OWASP, Azure, full-stack audit with PR comment posting."
-  skill_file: skills/pr-security-review/SKILL.md
-  max_turns: 30
-  required_secrets:
-  - GITHUB_TOKEN
-- name: repo-security-audit
-  description: "Full repository security scan \u2014 HIPAA compliance, OWASP Top 10, secrets detection, dependency audit."
-  skill_file: skills/repo-security-audit/SKILL.md
-  max_turns: 30
-  required_secrets:
-  - GITHUB_TOKEN
-- name: sast-scan
-  description: "Static application security testing \u2014 scan source code for vulnerabilities without running it."
-  skill_file: skills/sast-scan/SKILL.md
-  max_turns: 30
-- name: secrets-scanner
-  description: Scan repository for leaked secrets, API keys, tokens, and credentials.
-  skill_file: skills/secrets-scanner/SKILL.md
-  max_turns: 30
+  - name: carespace-code-review
+    description: "Autonomous PR security review — HIPAA/OWASP audit + code quality, posts findings as PR comment"
+    skill_file: skills/code-review-orchestrator/SKILL.md
+    max_turns: 30
+    required_secrets:
+      - GITHUB_TOKEN
+
+  - name: carespace-security-auditor
+    description: "Security vulnerability detection — HIPAA, OWASP Top 10, Azure, NestJS/Prisma/React/Flutter"
+    skill_file: skills/security-auditor/SKILL.md
+    max_turns: 30
+
+  - name: carespace-security-standards
+    description: "Reference skill — CareSpace security standards, HIPAA rules, OWASP healthcare context"
+    skill_file: skills/code-standards-base/SKILL.md
+    max_turns: 10

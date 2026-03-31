@@ -1,24 +1,24 @@
 # ClaudeHub SecDevOps Skills
 
-8 autonomous security skills for ClaudeHub. Each takes initial input and runs to completion — no interaction needed.
+3 skills following the OOP skill pattern from [agente-skill-oop](https://github.com/gugastork/agente-skill-oop):
 
-## Skills
+| Skill | Type | Role |
+|-------|------|------|
+| **code-standards-base** | Abstract/Reference | CareSpace security standards — HIPAA, OWASP, Azure. Not invoked directly. |
+| **security-auditor** | Specialist | Detects vulnerabilities by file type using the standards checklist. |
+| **code-review-orchestrator** | Orchestrator | Autonomous PR review — fetches diff, runs audit, posts PR comment. |
 
-| Skill | Input | What It Does |
-|-------|-------|-------------|
-| **pr-security-review** | repo + PR number | Full HIPAA/OWASP security review, posts comment on PR |
-| **repo-security-audit** | repo path | Comprehensive security scan — OWASP Top 10, HIPAA, secrets, deps |
-| **sast-scan** | repo path | Static code analysis for injection, auth gaps, data exposure |
-| **dast-scan** | base URL | Dynamic testing of running app — headers, TLS, CORS, probes |
-| **dependency-audit** | repo path | CVE scan of all dependencies (npm, pip, pub) |
-| **hipaa-compliance-check** | repo path | HIPAA-specific audit — PHI logging, storage, transit, access |
-| **secrets-scanner** | repo path | Find leaked API keys, passwords, tokens in code + git history |
-| **docker-security-audit** | repo path | Dockerfile + compose hardening check |
+## How It Works
+
+The **orchestrator** is the entry point. It embeds the standards + auditor logic and runs fully autonomously:
+
+1. Fetches PR diff via `gh` CLI
+2. Classifies files (backend/frontend/mobile/infra)
+3. Applies security audit checklist per file type
+4. Checks code quality
+5. Scores: BLOCK / NEEDS CHANGES / PASS
+6. Posts review as PR comment
 
 ## Required Secrets
 
-Set these in ClaudeHub → Settings → Secrets:
-- `GITHUB_TOKEN` — needed for pr-security-review and repo-security-audit (to fetch PR diffs)
-
-## All skills are autonomous
-Give input → skill runs → get report. No human interaction during execution.
+- `GITHUB_TOKEN` — for PR diff fetching and comment posting
