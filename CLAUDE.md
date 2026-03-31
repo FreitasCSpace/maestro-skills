@@ -1,37 +1,24 @@
-# ClaudeHub Skills
+# ClaudeHub SecDevOps Skills
 
-98 native Claude Code skills available for orchestration via ClaudeHub.
+8 autonomous security skills for ClaudeHub. Each takes initial input and runs to completion — no interaction needed.
 
-Each skill maps directly to an installed Claude Code slash command (`/skill-name`).
-When triggered from ClaudeHub, the skill runs as a full Claude Code session with
-complete tool access — Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch, MCP tools, and more.
+## Skills
 
-## Categories
+| Skill | Input | What It Does |
+|-------|-------|-------------|
+| **pr-security-review** | repo + PR number | Full HIPAA/OWASP security review, posts comment on PR |
+| **repo-security-audit** | repo path | Comprehensive security scan — OWASP Top 10, HIPAA, secrets, deps |
+| **sast-scan** | repo path | Static code analysis for injection, auth gaps, data exposure |
+| **dast-scan** | base URL | Dynamic testing of running app — headers, TLS, CORS, probes |
+| **dependency-audit** | repo path | CVE scan of all dependencies (npm, pip, pub) |
+| **hipaa-compliance-check** | repo path | HIPAA-specific audit — PHI logging, storage, transit, access |
+| **secrets-scanner** | repo path | Find leaked API keys, passwords, tokens in code + git history |
+| **docker-security-audit** | repo path | Dockerfile + compose hardening check |
 
-### SEO & Content (20 skills)
-seo, seo-audit, seo-content, seo-content-brief, seo-geo, seo-hreflang, seo-images, seo-page, seo-plan, seo-programmatic, seo-schema, seo-sitemap, seo-technical, seo-competitor-pages, serp-analyzer, keyword-research, content-gap-analysis, content-strategy, write-blog, schema-markup
+## Required Secrets
 
-### Marketing & Growth (25 skills)
-competitor-analysis, copywriting, copy-editing, content-calendar, content-repurposing, demand-gen, email-sequence, email-subject-lines, facebook-ads, google-ads, google-ads-report, growth-strategy, icp-builder, launch-strategy, lead-magnet, linkedin-ads, linkedin-content, marketing-ideas, newsletter, page-cro, onboarding-cro, pricing-strategy, product-marketing, referral-program, signup-flow-cro
+Set these in ClaudeHub → Settings → Secrets:
+- `GITHUB_TOKEN` — needed for pr-security-review and repo-security-audit (to fetch PR diffs)
 
-### Social & Channels (10 skills)
-social-content, thread-writer, reddit-marketing, bluesky, podcast-marketing, slack-bot, discord-bot, telegram-bot, feishu-lark, youtube-analytics
-
-### Analytics & Research (8 skills)
-google-analytics, search-console, semrush-research, ahrefs-research, backlink-audit, brand-monitor, brand-research, domain-research, google-reviews
-
-### Advertising (3 skills)
-facebook-ads, google-ads, linkedin-ads
-
-### Development & 3D (20+ skills)
-dart-flutter-mcp, animated-component-libraries, react-three-fiber, threejs-webgl, babylonjs-engine, gsap-scrolltrigger, motion-framer, pixijs-2d, and more
-
-### Business Tools (5 skills)
-hubspot, apollo-outreach, ab-test-setup, affiliate-marketing, video-ad-analysis
-
-## How It Works
-
-1. Connect this repo in ClaudeHub → Repositories
-2. ClaudeHub reads `.claudehub.yml` and registers all 98 skills
-3. Trigger any skill from Runs page, schedule it, or chain skills together
-4. Each skill runs as an autonomous Claude Code session
+## All skills are autonomous
+Give input → skill runs → get report. No human interaction during execution.
