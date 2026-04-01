@@ -8,6 +8,7 @@ description: End-of-sprint retrospective — calculates velocity, completion %, 
 **Fully autonomous. Idempotent. File-based pipeline — all data in /tmp files.**
 
 ## GUARDRAILS
+- ⛔ SLACK: ONLY post to channels from context.sh ($SLACK_ENGINEERING, $SLACK_STANDUP, $SLACK_SPRINT, etc). If channel not found, FAIL — NEVER substitute another channel. NEVER post to #carespace-team, #general, #eng-general.
 - Only runs if sprint is PAST due date — silent skip if still active
 - Idempotency: `retro-YYYY-MM-DD` tag on tasks prevents re-processing
 - Max 15 carryovers — blocks and alerts Slack if exceeded

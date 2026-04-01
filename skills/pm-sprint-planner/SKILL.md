@@ -8,6 +8,7 @@ description: Sprint planning and finalization — checks candidates, moves tasks
 **Fully autonomous. Idempotent. File-based pipeline — all data in /tmp files.**
 
 ## GUARDRAILS
+- ⛔ SLACK: ONLY post to channels from context.sh ($SLACK_ENGINEERING, $SLACK_STANDUP, $SLACK_SPRINT, etc). If channel not found, FAIL — NEVER substitute another channel. NEVER post to #carespace-team, #general, #eng-general.
 - Capacity guard: max $SPRINT_BUDGET_SP SP / 25 tasks — blocks if exceeded
 - Idempotency: `sprint-finalized-YYYY-MM-DD` tag prevents re-processing
 - No auto-create sprints — must exist in ClickUp already

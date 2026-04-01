@@ -8,6 +8,7 @@ description: Daily sprint standup digest — fetches sprint tasks from ClickUp, 
 **Fully autonomous. Read-only on ClickUp. File-based pipeline — all data in /tmp files.**
 
 ## GUARDRAILS
+- ⛔ SLACK: ONLY post to channels from context.sh ($SLACK_ENGINEERING, $SLACK_STANDUP, $SLACK_SPRINT, etc). If channel not found, FAIL — NEVER substitute another channel. NEVER post to #carespace-team, #general, #eng-general.
 - Read-only on ClickUp — NEVER creates, updates, or deletes tasks
 - Idempotent Slack posts — updates existing digest if already posted today
 - No sprint = no post (single skip message)

@@ -8,6 +8,7 @@ description: Import GitHub issues into ClickUp backlog, deduplicate, normalize p
 **Fully autonomous. Idempotent. File-based pipeline — all data in /tmp files.**
 
 ## GUARDRAILS
+- ⛔ SLACK: ONLY post to channels from context.sh ($SLACK_ENGINEERING, $SLACK_STANDUP, $SLACK_SPRINT, etc). If channel not found, FAIL — NEVER substitute another channel. NEVER post to #carespace-team, #general, #eng-general.
 - Delete ClickUp tasks whose linked GitHub issue no longer exists (404/closed) — no cap
 - Max per run: 50 creates, 50 SP updates
 - Only set SP on tasks with zero SP — never overwrite

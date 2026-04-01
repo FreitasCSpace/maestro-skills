@@ -3,6 +3,22 @@
 # CareSpace PM Context — Single source of truth for all PM skills
 # Ported from carespace-pm-crews/shared/config/context.py (2026-03-17)
 # ═══════════════════════════════════════════════════════════════════════
+#
+# ⛔⛔⛔ ABSOLUTE RULES — DO NOT VIOLATE UNDER ANY CIRCUMSTANCES ⛔⛔⛔
+#
+# 1. ONLY post to Slack channels listed in SLACK_ALLOWED_CHANNELS below.
+#    NEVER substitute, fallback, or "helpfully" pick a different channel.
+#    If the target channel doesn't exist, FAIL and report the error.
+#    DO NOT post to #carespace-team, #general, #eng-general, or ANY
+#    channel not explicitly listed. No exceptions. No "instead" logic.
+#
+# 2. ONLY use IDs, field names, and values defined in this file.
+#    NEVER guess, infer, or substitute different values.
+#
+# 3. Follow the SKILL.md steps EXACTLY. Do not skip, reorder, or
+#    improvise alternatives. If a step fails, report the failure.
+#
+# ═══════════════════════════════════════════════════════════════════════
 
 export WORKSPACE_ID="31124097"
 export GITHUB_ORG="carespace-ai"
