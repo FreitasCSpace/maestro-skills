@@ -38,7 +38,9 @@ export SPRINT_TEMPLATE_LIST="901326512991"
 # CORRECT SP field from carespace-pm-crews-final context.py
 export SP_FIELD_ID="1662e3e7-b018-47b7-8881-e30f6831c674"
 
-# ── SLACK CHANNELS ────────────────────────────────────────────────────
+# ── SLACK CHANNELS (APPROVED LIST — NEVER post to any other channel) ──
+# ⛔ FORBIDDEN: Do NOT post to #carespace-team, #general, or any channel
+#    not listed here. If unsure, use $SLACK_ENGINEERING.
 export SLACK_STANDUP="#pm-standup"
 export SLACK_SPRINT="#pm-sprint-board"
 export SLACK_ENGINEERING="#pm-engineering"
@@ -47,6 +49,9 @@ export SLACK_GTM="#pm-gtm"
 export SLACK_EXEC="#pm-exec-updates"
 export SLACK_COMPLIANCE="#pm-compliance"
 export SLACK_CS="#pm-customer-success"
+export SLACK_OPS="#ops-general"
+# Allowed channels array for validation
+export SLACK_ALLOWED_CHANNELS="pm-standup pm-sprint-board pm-engineering pm-alerts pm-gtm pm-exec-updates pm-compliance pm-customer-success ops-general"
 
 # ── SPRINT RULES ──────────────────────────────────────────────────────
 export SPRINT_BUDGET_SP=48        # 60 default velocity * 0.80 buffer
@@ -125,9 +130,19 @@ get_domain() {
 # ── Helper: Post Block Kit message to Slack (idempotent) ────────────
 # Usage: slack_post "#channel" "Title" "Body markdown" "skill-name"
 # Searches for existing message with same title today — updates if found, posts new if not.
+# ⛔ REFUSES to post to channels not in SLACK_ALLOWED_CHANNELS.
 slack_post() {
   local channel="$1" title="$2" body="$3" skill="$4"
   local today=$(date +%Y-%m-%d)
+  local ch_name="${channel#\#}"
+
+  # GUARDRAIL: Only post to approved channels
+  if ! echo "$SLACK_ALLOWED_CHANNELS" | grep -qw "$ch_name"; then
+    echo "⛔ BLOCKED: $ch_name is NOT an approved Slack channel."
+    echo "   Approved: $SLACK_ALLOWED_CHANNELS"
+    echo "   Skill $skill tried to post to unauthorized channel. Aborting."
+    return 1
+  fi
 
   # Find channel ID
   local ch_id=$(curl -s "https://slack.com/api/conversations.list?types=public_channel&limit=200" \
