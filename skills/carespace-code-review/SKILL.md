@@ -5,10 +5,11 @@ description: Autonomous PR security review for CareSpace — HIPAA/OWASP audit +
 
 # CareSpace Code Review Orchestrator
 
-**Three phases:**
+**Four phases — ALL are mandatory, do not stop after Step 5:**
 1. **Discover** — Find repos with open PRs, extract their dependencies
 2. **Threat Intel** — Query CVE sources, build per-repo vulnerability map
 3. **PR Review** — For each PR: read diff, audit security + code quality, include ONLY CVE findings relevant to that PR's changed files/deps, post comment
+4. **Notify** — Post summary to `#pm-engineering` Slack channel (STEP 6 — REQUIRED, do not skip)
 
 **RULES:**
 - PR comments contain ONLY findings. No "positive observations", no "not affected" lists, no news feed.
@@ -17,6 +18,7 @@ description: Autonomous PR security review for CareSpace — HIPAA/OWASP audit +
 - Use sub-agents (Task tool) for parallel PR reviews when possible.
 - Write reviews to `/tmp/review-{repo}-{number}.md`, batch post at the end.
 - Summary table counts MUST match actual findings listed above it.
+- **STEP 6 IS MANDATORY** — the run is not complete until the Slack message is sent to `#pm-engineering`.
 
 ---
 
