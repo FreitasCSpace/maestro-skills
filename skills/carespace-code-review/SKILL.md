@@ -217,6 +217,35 @@ done
 
 ---
 
+## STEP 6: Post Summary to Slack
+
+After all PRs are posted, send the summary table to `#pm-engineering` using the shared `slack_post` helper.
+
+```bash
+source ~/.claude/skills/_pm-shared/context.sh
+
+# Build summary text from review results
+TOTAL=$(ls /tmp/review-*.md 2>/dev/null | wc -l)
+BLOCKS=$(grep -rl "🔒 Security Review — BLOCK" /tmp/review-*.md 2>/dev/null | wc -l)
+NEEDS=$(grep -rl "🔒 Security Review — NEEDS CHANGES" /tmp/review-*.md 2>/dev/null | wc -l)
+PASSES=$(grep -rl "🔒 Security Review — PASS" /tmp/review-*.md 2>/dev/null | wc -l)
+DATE=$(date -u +%Y-%m-%d)
+
+SUMMARY_BODY="*${TOTAL} PRs reviewed across carespace-ai* — ${BLOCKS} BLOCK, ${NEEDS} NEEDS CHANGES, ${PASSES} PASS
+
+$(for f in /tmp/review-*.md; do
+  repo=$(basename "$f" .md | sed 's/review-//;s/-[0-9]*$//')
+  num=$(basename "$f" .md | grep -oP '\d+$')
+  verdict=$(grep -oP '🔒 Security Review — \K(BLOCK|NEEDS CHANGES|PASS)' "$f" | head -1)
+  title=$(gh pr view $num --repo carespace-ai/$repo --json title --jq '.title' 2>/dev/null)
+  echo "• *${repo}* #${num} — ${title}: *${verdict}*"
+done)"
+
+slack_post "$SLACK_ENGINEERING" "CareSpace Security Review — ${DATE}" "$SUMMARY_BODY" "carespace-code-review"
+```
+
+---
+
 ## CARESPACE CONTEXT
 
 **Stack:** React 18/TypeScript + NestJS/Prisma + Flutter/Dart + Swift + Kotlin. Azure. FusionAuth + JWT + NestJS guards.
