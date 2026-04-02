@@ -202,48 +202,48 @@ For dependency findings, add: `**Fix:** Upgrade `{package}` to `{version}``
 
 ---
 
-## STEP 5: Batch Post
+## STEP 5 + 6: Batch Post → Slack Summary (run as one block)
+
+Run this entire block as a single bash command — post all reviews then immediately send the Slack summary:
 
 ```bash
+source ~/.claude/skills/_pm-shared/context.sh
+
+# Post all review files to GitHub
 for f in /tmp/review-*.md; do
   repo=$(basename "$f" .md | sed 's/review-//;s/-[0-9]*$//')
   num=$(basename "$f" .md | grep -oP '\d+$')
   EXISTING=$(gh api repos/carespace-ai/$repo/issues/$num/comments --jq '.[] | select(.body | contains("CareSpace SecDevOps AI via ClaudeHub")) | .id' 2>/dev/null | head -1)
   if [ -n "$EXISTING" ]; then
     gh api repos/carespace-ai/$repo/issues/comments/$EXISTING -X PATCH -F body=@"$f"
+    echo "Updated comment on $repo #$num"
   else
     gh pr comment $num --repo carespace-ai/$repo --body-file "$f"
+    echo "Posted comment on $repo #$num"
   fi
 done
-```
 
----
-
-## STEP 6: Post Summary to Slack
-
-After all PRs are posted, send the summary table to `#pm-engineering` using the shared `slack_post` helper.
-
-```bash
-source ~/.claude/skills/_pm-shared/context.sh
-
-# Build summary text from review results
+# Build Slack summary
 TOTAL=$(ls /tmp/review-*.md 2>/dev/null | wc -l)
 BLOCKS=$(grep -rl "🔒 Security Review — BLOCK" /tmp/review-*.md 2>/dev/null | wc -l)
 NEEDS=$(grep -rl "🔒 Security Review — NEEDS CHANGES" /tmp/review-*.md 2>/dev/null | wc -l)
 PASSES=$(grep -rl "🔒 Security Review — PASS" /tmp/review-*.md 2>/dev/null | wc -l)
 DATE=$(date -u +%Y-%m-%d)
 
-SUMMARY_BODY="*${TOTAL} PRs reviewed across carespace-ai* — ${BLOCKS} BLOCK, ${NEEDS} NEEDS CHANGES, ${PASSES} PASS
-
-$(for f in /tmp/review-*.md; do
+LINES=""
+for f in /tmp/review-*.md; do
   repo=$(basename "$f" .md | sed 's/review-//;s/-[0-9]*$//')
   num=$(basename "$f" .md | grep -oP '\d+$')
   verdict=$(grep -oP '🔒 Security Review — \K(BLOCK|NEEDS CHANGES|PASS)' "$f" | head -1)
   title=$(gh pr view $num --repo carespace-ai/$repo --json title --jq '.title' 2>/dev/null)
-  echo "• *${repo}* #${num} — ${title}: *${verdict}*"
-done)"
+  LINES="${LINES}• *${repo}* #${num} — ${title}: *${verdict}*\n"
+done
 
-slack_post "$SLACK_ENGINEERING" "CareSpace Security Review — ${DATE}" "$SUMMARY_BODY" "carespace-code-review"
+SUMMARY_BODY="*${TOTAL} PRs reviewed across carespace-ai* — ${BLOCKS} BLOCK, ${NEEDS} NEEDS CHANGES, ${PASSES} PASS\n\n${LINES}"
+
+# Post to #pm-engineering — this is mandatory and must not be skipped
+slack_post "$SLACK_ENGINEERING" "CareSpace Security Review — ${DATE}" "$(printf "$SUMMARY_BODY")" "carespace-code-review"
+echo "Slack summary posted to #pm-engineering"
 ```
 
 ---
