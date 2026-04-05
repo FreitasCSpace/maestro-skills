@@ -2,8 +2,8 @@
 name: pipeline
 description: |
   Autonomous dev pipeline — runs the full gstack sprint in one session.
-  Reads actual gstack SKILL.md files and follows their full methodology.
-  Investigate → Build → Review → Security → QA → Ship.
+  Auto-detects project stack, installs deps, generates temp CLAUDE.md if missing.
+  Reads actual gstack SKILL.md files for full methodology.
 ---
 
 # Autonomous Dev Pipeline
@@ -12,9 +12,7 @@ You are an autonomous development pipeline. You execute the full gstack sprint
 in this single session — from understanding the task to shipping a PR.
 
 **How this works:** For each phase, you READ the actual gstack SKILL.md file
-from `~/.claude/skills/gstack/` and follow its full methodology. This gives
-you the complete gstack quality — all the detailed checks, exclusions,
-checklists, and patterns that make gstack effective.
+from `~/.claude/skills/gstack/` and follow its full methodology.
 
 You write results to PIPELINE.md after each phase for persistent context.
 
@@ -37,6 +35,14 @@ echo "$GITHUB_TOKEN" | gh auth login --with-token 2>/dev/null
 gh auth status
 ```
 
+### Configure git identity
+
+```bash
+git config user.email "pipeline@carespace.ai"
+git config user.name "CareSpace Pipeline"
+git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$(git remote get-url origin | sed 's|.*github.com[:/]||' | sed 's|\.git$||').git" 2>/dev/null || true
+```
+
 ### Understand the task
 
 If the task references a GitHub issue URL, fetch it:
@@ -45,16 +51,160 @@ If the task references a GitHub issue URL, fetch it:
 gh issue view <ISSUE_NUMBER> --repo <owner/repo> --json title,body,labels,state
 ```
 
-If the task references a repo you don't have locally, clone it into the
-current working directory:
+If the task references a repo you don't have locally, clone it:
 
 ```bash
 gh repo clone <owner/repo> .
 ```
 
-### Read project config
+### Auto-detect project stack and install dependencies
 
-Read `CLAUDE.md` if it exists — it has test commands, deploy config, conventions.
+Detect the project type and install dependencies automatically. Run the
+appropriate commands based on what files exist:
+
+```bash
+# Detect and install
+if [ -f "package-lock.json" ]; then
+  echo "Node.js (npm) detected"
+  npm install --legacy-peer-deps 2>&1 | tail -5
+elif [ -f "yarn.lock" ]; then
+  echo "Node.js (yarn) detected"
+  npm install --legacy-peer-deps 2>&1 | tail -5
+elif [ -f "bun.lock" ] || [ -f "bun.lockb" ]; then
+  echo "Node.js (bun) detected"
+  bun install 2>&1 | tail -5
+elif [ -f "package.json" ]; then
+  echo "Node.js detected"
+  npm install --legacy-peer-deps 2>&1 | tail -5
+elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+  echo "Android/Gradle detected"
+  # Gradle projects — skip install, build phase handles it
+elif [ -f "go.mod" ]; then
+  echo "Go detected"
+  go mod download 2>&1 | tail -5
+elif [ -f "requirements.txt" ]; then
+  echo "Python detected"
+  pip install -r requirements.txt 2>&1 | tail -5
+elif [ -f "pyproject.toml" ]; then
+  echo "Python (pyproject) detected"
+  pip install -e . 2>&1 | tail -5
+elif [ -f "pubspec.yaml" ]; then
+  echo "Dart/Flutter detected"
+  flutter pub get 2>&1 | tail -5
+elif [ -f "Gemfile" ]; then
+  echo "Ruby detected"
+  bundle install 2>&1 | tail -5
+else
+  echo "Unknown project type — no auto-install"
+fi
+```
+
+### Read or generate project config
+
+Read `CLAUDE.md` if it exists. If it does NOT exist, auto-generate a temporary
+one based on the detected project type. This tells all downstream phases how to
+build, test, and lint.
+
+If `CLAUDE.md` does not exist, create it:
+
+```bash
+if [ ! -f "CLAUDE.md" ]; then
+  # Auto-detect commands from package.json / build files
+  if [ -f "package.json" ]; then
+    TEST_CMD=$(python3 -c "import json; d=json.load(open('package.json')); print(d.get('scripts',{}).get('test',''))" 2>/dev/null)
+    BUILD_CMD=$(python3 -c "import json; d=json.load(open('package.json')); print(d.get('scripts',{}).get('build',''))" 2>/dev/null)
+    LINT_CMD=$(python3 -c "import json; d=json.load(open('package.json')); print(d.get('scripts',{}).get('lint',''))" 2>/dev/null)
+    START_CMD=$(python3 -c "import json; d=json.load(open('package.json')); print(d.get('scripts',{}).get('start',d.get('scripts',{}).get('dev','')))" 2>/dev/null)
+    FRAMEWORK=$(python3 -c "import json; d=json.load(open('package.json')); deps=list(d.get('dependencies',{}).keys())+list(d.get('devDependencies',{}).keys()); fw=[k for k in deps if k in ['react','next','@nestjs/core','express','vue','@angular/core','svelte']]; print(', '.join(fw) if fw else 'node')" 2>/dev/null)
+    cat > CLAUDE.md << GENEOF
+# $(basename $(pwd))
+
+## Framework
+$FRAMEWORK
+
+## Commands
+\`\`\`bash
+npm install --legacy-peer-deps   # install dependencies
+${TEST_CMD:+npm test                        # run tests}
+${BUILD_CMD:+npm run build                   # build}
+${LINT_CMD:+npm run lint                    # lint}
+${START_CMD:+npm start                       # dev server}
+\`\`\`
+
+## Auto-generated
+This CLAUDE.md was auto-generated by the Maestro pipeline. It will be removed before PR creation.
+GENEOF
+  elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+    cat > CLAUDE.md << 'GENEOF'
+# Android Project
+
+## Commands
+```bash
+./gradlew assembleDebug    # build debug
+./gradlew test             # run unit tests
+./gradlew lint             # run lint
+./gradlew connectedCheck   # run instrumented tests (requires device)
+```
+
+## Auto-generated
+This CLAUDE.md was auto-generated by the Maestro pipeline.
+GENEOF
+  elif [ -f "go.mod" ]; then
+    cat > CLAUDE.md << 'GENEOF'
+# Go Project
+
+## Commands
+```bash
+go build ./...      # build
+go test ./...       # run tests
+go vet ./...        # lint
+```
+
+## Auto-generated
+This CLAUDE.md was auto-generated by the Maestro pipeline.
+GENEOF
+  elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then
+    cat > CLAUDE.md << 'GENEOF'
+# Python Project
+
+## Commands
+```bash
+pytest               # run tests
+python -m mypy .     # type check
+ruff check .         # lint
+```
+
+## Auto-generated
+This CLAUDE.md was auto-generated by the Maestro pipeline.
+GENEOF
+  elif [ -f "pubspec.yaml" ]; then
+    cat > CLAUDE.md << 'GENEOF'
+# Flutter/Dart Project
+
+## Commands
+```bash
+flutter pub get      # install deps
+flutter test         # run tests
+flutter analyze      # lint
+flutter build        # build
+```
+
+## Auto-generated
+This CLAUDE.md was auto-generated by the Maestro pipeline.
+GENEOF
+  fi
+  [ -f "CLAUDE.md" ] && echo "Generated temporary CLAUDE.md" || echo "Could not auto-detect project type for CLAUDE.md"
+fi
+```
+
+Now read the CLAUDE.md (existing or generated):
+
+```bash
+cat CLAUDE.md 2>/dev/null || echo "No CLAUDE.md available"
+```
+
+**Remember:** If CLAUDE.md was auto-generated (contains "Auto-generated"), add it
+to `.gitignore` or `git rm` it before creating the PR in Phase 8.
 
 ### Classify the task type
 
@@ -155,9 +305,23 @@ Implement the changes.
 3. Follow existing code patterns
 4. Write tests if the project has a test framework
 
-Run tests:
+Run tests using the command from CLAUDE.md:
+
 ```bash
-npm test 2>/dev/null || bun test 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || echo "No test runner detected"
+# Read test command from CLAUDE.md, or auto-detect
+if [ -f "package.json" ]; then
+  npm test 2>&1 | tail -30
+elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+  ./gradlew test 2>&1 | tail -30
+elif [ -f "go.mod" ]; then
+  go test ./... 2>&1 | tail -30
+elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then
+  pytest 2>&1 | tail -30
+elif [ -f "pubspec.yaml" ]; then
+  flutter test 2>&1 | tail -30
+else
+  echo "No test runner detected"
+fi
 ```
 
 Commit:
@@ -181,7 +345,7 @@ Follow every step — the checklist, the completeness checks, the regression
 analysis, the auto-fix patterns. Review the diff:
 
 ```bash
-git diff main..HEAD
+git diff main..HEAD 2>/dev/null || git diff develop..HEAD 2>/dev/null || git diff master..HEAD
 ```
 
 If you find issues: fix them, commit, re-review. Max 3 fix iterations.
@@ -203,7 +367,7 @@ cat ~/.claude/skills/gstack/cso/SKILL.md
 ```
 
 Follow the complete OWASP Top 10 + STRIDE audit. Apply the confidence gate
-(8/10+), the 17 false positive exclusions, the independent verification.
+(8/10+), the false positive exclusions, the independent verification.
 Each finding must have a concrete exploit scenario.
 
 If critical vulnerabilities found: fix them, commit, re-audit.
@@ -224,8 +388,9 @@ git add -A PIPELINE.md && git commit -m "pipeline: security" && git push
 cat ~/.claude/skills/gstack/qa/SKILL.md
 ```
 
-Run automated tests. If a staging URL exists and the browse binary is available,
-test visually:
+Run automated tests first (same detection as Phase 4).
+
+If the browse binary exists, test visually:
 
 ```bash
 B=~/.claude/skills/gstack/browse/dist/browse
@@ -250,11 +415,24 @@ git add -A PIPELINE.md && git commit -m "pipeline: qa" && git push
 cat ~/.claude/skills/gstack/ship/SKILL.md
 ```
 
+### Clean up auto-generated files
+
+If CLAUDE.md was auto-generated by this pipeline (contains "Auto-generated"),
+remove it before creating the PR:
+
+```bash
+grep -q "Auto-generated" CLAUDE.md 2>/dev/null && git rm CLAUDE.md && git commit -m "pipeline: remove auto-generated CLAUDE.md"
+```
+
+### Create PR
+
 Follow the ship workflow: sync main, final test run, create PR with full
 pipeline report.
 
 ```bash
+BASE=$(git remote show origin | grep 'HEAD branch' | sed 's/.*: //')
 gh pr create \
+  --base "$BASE" \
   --title "$(sed -n '/^## Task/,/^## /p' PIPELINE.md | head -n -1 | tail -n +2 | head -1 | cut -c1-70)" \
   --body "$(cat PIPELINE.md)
 
