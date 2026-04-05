@@ -52,12 +52,29 @@ REPO=$(echo "$TASK" | grep -oP 'github\.com/\K[^/]+/[^/]+' | head -1)
 echo "Target repo: $REPO"
 ```
 
-**Always clone the target repo fresh into a clean directory:**
+**ALWAYS clone the target repo fresh into a clean directory.** The working
+directory may contain files from a previous pipeline run — wipe everything.
 
 ```bash
-# Clean the working directory and clone the correct repo
-rm -rf ./* ./.[!.]* 2>/dev/null || true
+# Nuke the entire working directory — previous run data MUST NOT contaminate this run
+cd /tmp
+rm -rf /tmp/pipeline-work
+mkdir -p /tmp/pipeline-work
+cd /tmp/pipeline-work
 gh repo clone "$REPO" . 2>&1
+```
+
+**IMPORTANT:** You are now in `/tmp/pipeline-work`. Use this as your working
+directory for the entire pipeline run. Do NOT cd back to the original directory.
+
+Remove any stale PIPELINE.md from a previous pipeline run that was committed
+to the repo:
+
+```bash
+rm -f PIPELINE.md 2>/dev/null
+git checkout -- PIPELINE.md 2>/dev/null || true
+# If PIPELINE.md exists from a previous run, delete it
+[ -f PIPELINE.md ] && git rm PIPELINE.md && git commit -m "pipeline: clean stale PIPELINE.md" 2>/dev/null || true
 ```
 
 Now fetch the issue details:
