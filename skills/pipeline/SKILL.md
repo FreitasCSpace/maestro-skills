@@ -35,26 +35,44 @@ echo "$GITHUB_TOKEN" | gh auth login --with-token 2>/dev/null
 gh auth status
 ```
 
-### Configure git identity
+### Understand the task and clone the CORRECT repo
+
+**CRITICAL:** You MUST work on the repo referenced in the task, NOT whatever
+repo is already in the working directory. The working directory may contain
+a repo from a previous pipeline run — IGNORE IT.
+
+Extract the repo owner/name from the task. If the task contains a GitHub issue
+URL like `https://github.com/carespace-ai/carespace-admin/issues/146`, the
+repo is `carespace-ai/carespace-admin`.
+
+```bash
+# Parse repo from issue URL in the task
+TASK=$(echo "$CLAUDEHUB_INPUT_KWARGS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('task',''))")
+REPO=$(echo "$TASK" | grep -oP 'github\.com/\K[^/]+/[^/]+' | head -1)
+echo "Target repo: $REPO"
+```
+
+**Always clone the target repo fresh into a clean directory:**
+
+```bash
+# Clean the working directory and clone the correct repo
+rm -rf ./* ./.[!.]* 2>/dev/null || true
+gh repo clone "$REPO" . 2>&1
+```
+
+Now fetch the issue details:
+
+```bash
+ISSUE_NUM=$(echo "$TASK" | grep -oP 'issues/\K\d+')
+gh issue view "$ISSUE_NUM" --repo "$REPO" --json title,body,labels,state
+```
+
+### Configure git for the cloned repo
 
 ```bash
 git config user.email "pipeline@carespace.ai"
 git config user.name "CareSpace Pipeline"
-git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$(git remote get-url origin | sed 's|.*github.com[:/]||' | sed 's|\.git$||').git" 2>/dev/null || true
-```
-
-### Understand the task
-
-If the task references a GitHub issue URL, fetch it:
-
-```bash
-gh issue view <ISSUE_NUMBER> --repo <owner/repo> --json title,body,labels,state
-```
-
-If the task references a repo you don't have locally, clone it:
-
-```bash
-gh repo clone <owner/repo> .
+git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git"
 ```
 
 ### Auto-detect project stack and install dependencies
