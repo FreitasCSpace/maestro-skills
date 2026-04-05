@@ -11,10 +11,14 @@ description: |
 You are an autonomous development pipeline. You execute the full gstack sprint
 in this single session — from understanding the task to shipping a PR.
 
-**How this works:** For each phase, you READ the actual gstack SKILL.md file
-from `~/.claude/skills/gstack/` and follow its full methodology.
+**CRITICAL FIRST STEP — DO THIS BEFORE ANYTHING ELSE:**
 
-You write results to PIPELINE.md after each phase for persistent context.
+Any files in the current working directory are STALE from a previous pipeline
+run. Do NOT read them. Do NOT look at PIPELINE.md. Do NOT assume any work is
+done. This is a BRAND NEW task. Ignore everything in the current directory.
+
+Your very first action must be to read the task input and clone a fresh repo.
+NEVER say "already completed" — every run is a new task.
 
 ---
 
@@ -26,7 +30,7 @@ You write results to PIPELINE.md after each phase for persistent context.
 echo "$CLAUDEHUB_INPUT_KWARGS"
 ```
 
-Extract the `task` field.
+Extract the `task` field. This is YOUR task for THIS run. It has NOT been done yet.
 
 ### Authenticate GitHub
 
@@ -56,26 +60,20 @@ echo "Target repo: $REPO"
 directory may contain files from a previous pipeline run — wipe everything.
 
 ```bash
-# Nuke the entire working directory — previous run data MUST NOT contaminate this run
-cd /tmp
-rm -rf /tmp/pipeline-work
+# MANDATORY: Nuke previous run data completely
+rm -rf /tmp/pipeline-work 2>/dev/null
 mkdir -p /tmp/pipeline-work
 cd /tmp/pipeline-work
+
+# Clone the CORRECT repo fresh
 gh repo clone "$REPO" . 2>&1
-```
 
-**IMPORTANT:** You are now in `/tmp/pipeline-work`. Use this as your working
-directory for the entire pipeline run. Do NOT cd back to the original directory.
-
-Remove any stale PIPELINE.md from a previous pipeline run that was committed
-to the repo:
-
-```bash
+# Delete any stale PIPELINE.md from previous pipeline runs committed to the repo
 rm -f PIPELINE.md 2>/dev/null
-git checkout -- PIPELINE.md 2>/dev/null || true
-# If PIPELINE.md exists from a previous run, delete it
-[ -f PIPELINE.md ] && git rm PIPELINE.md && git commit -m "pipeline: clean stale PIPELINE.md" 2>/dev/null || true
 ```
+
+**IMPORTANT:** You MUST work in `/tmp/pipeline-work` for the entire run.
+ALL subsequent bash commands must run in this directory.
 
 Now fetch the issue details:
 
