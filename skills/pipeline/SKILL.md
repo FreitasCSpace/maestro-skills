@@ -1,19 +1,24 @@
 ---
 name: pipeline
 description: |
-  Autonomous dev pipeline — runs the full gstack sprint in one session:
-  Think → Plan → Build → Review → Security → QA → Ship.
-  Each phase invokes native gstack skills and writes results to PIPELINE.md.
+  Autonomous dev pipeline — runs the full gstack sprint in one session.
+  Reads actual gstack SKILL.md files and follows their full methodology.
+  Investigate → Build → Review → Security → QA → Ship.
 ---
 
 # Autonomous Dev Pipeline
 
-You are an autonomous development pipeline. You will execute the full gstack
-sprint — from understanding the task to shipping a PR — in this single session.
+You are an autonomous development pipeline. You execute the full gstack sprint
+in this single session — from understanding the task to shipping a PR.
 
-Each phase invokes a native gstack skill via its slash command, then captures
-results in PIPELINE.md. If context gets heavy, summarize completed phases in
-PIPELINE.md and continue.
+**How this works:** For each phase, you READ the actual gstack SKILL.md file
+from `~/.claude/skills/gstack/` and follow its full methodology. This gives
+you the complete gstack quality — all the detailed checks, exclusions,
+checklists, and patterns that make gstack effective.
+
+You write results to PIPELINE.md after each phase for persistent context.
+
+---
 
 ## Step 0 — Setup
 
@@ -23,7 +28,7 @@ PIPELINE.md and continue.
 echo "$CLAUDEHUB_INPUT_KWARGS"
 ```
 
-Extract the `task` field. This is what you need to accomplish.
+Extract the `task` field.
 
 ### Authenticate GitHub
 
@@ -37,10 +42,11 @@ gh auth status
 If the task references a GitHub issue URL, fetch it:
 
 ```bash
-gh issue view <URL> --json title,body,labels,state
+gh issue view <ISSUE_NUMBER> --repo <owner/repo> --json title,body,labels,state
 ```
 
-If the task references a repo you don't have locally, clone it:
+If the task references a repo you don't have locally, clone it into the
+current working directory:
 
 ```bash
 gh repo clone <owner/repo> .
@@ -52,8 +58,7 @@ Read `CLAUDE.md` if it exists — it has test commands, deploy config, conventio
 
 ### Classify the task type
 
-Determine: is this a **new feature**, **bug fix**, **security fix**, or **refactor**?
-This determines which phases to run.
+Determine: **feature**, **bug-fix**, **security-fix**, or **refactor**.
 
 ### Create pipeline branch and PIPELINE.md
 
@@ -61,7 +66,7 @@ This determines which phases to run.
 git checkout -b pipeline/$(date +%Y%m%d-%H%M%S)
 ```
 
-Write `PIPELINE.md` with:
+Write `PIPELINE.md`:
 ```markdown
 # Pipeline Run
 
@@ -75,7 +80,6 @@ Write `PIPELINE.md` with:
 IN_PROGRESS
 ```
 
-Commit and push:
 ```bash
 git add PIPELINE.md
 git commit -m "pipeline: start"
@@ -84,18 +88,19 @@ git push -u origin HEAD
 
 ---
 
-## Phase 1 — Investigate (bug fixes and security fixes only)
+## Phase 1 — Investigate (bug-fix and security-fix only)
 
-Skip this phase for features and refactors.
+Skip for features and refactors.
 
-Run the gstack investigate methodology:
+**Read the gstack investigate skill and follow its methodology:**
 
-1. Search for the bug/vulnerability in the codebase
-2. Trace the code path to find root cause
-3. Form hypotheses and test them
-4. Identify all affected files
+```bash
+cat ~/.claude/skills/gstack/investigate/SKILL.md
+```
 
-Append `## Investigation` to PIPELINE.md with findings.
+Follow every step in that SKILL.md to investigate the issue. Apply the Iron Law:
+no fixes without investigation. When done, append `## Investigation` to
+PIPELINE.md with your findings (root cause, affected files, approach).
 
 ```bash
 git add PIPELINE.md && git commit -m "pipeline: investigate" && git push
@@ -105,17 +110,16 @@ git add PIPELINE.md && git commit -m "pipeline: investigate" && git push
 
 ## Phase 2 — Think (features only)
 
-Skip for bug fixes, security fixes, and refactors.
+Skip for bug-fix, security-fix, and refactor.
 
-Work through the six forcing questions:
-1. What problem are we actually solving?
-2. Who benefits and how?
-3. What does the 10-star version look like?
-4. What are we NOT building?
-5. What could go wrong?
-6. How will we know it worked?
+**Read the gstack office-hours skill and follow its methodology:**
 
-Append `## Think` to PIPELINE.md.
+```bash
+cat ~/.claude/skills/gstack/office-hours/SKILL.md
+```
+
+Follow the six forcing questions. Write a design document. Append `## Think`
+to PIPELINE.md.
 
 ```bash
 git add PIPELINE.md && git commit -m "pipeline: think" && git push
@@ -123,17 +127,18 @@ git add PIPELINE.md && git commit -m "pipeline: think" && git push
 
 ---
 
-## Phase 3 — Plan (features and refactors)
+## Phase 3 — Plan (features and refactors only)
 
-Skip for bug fixes and security fixes.
+Skip for bug-fix and security-fix.
 
-Lock in the technical approach:
-- Architecture decisions and data flow
-- Edge cases and error handling
-- Test plan: what tests to write
-- Scope: what's in, what's out
+**Read the gstack plan-eng-review skill and follow its methodology:**
 
-Append `## Plan` to PIPELINE.md.
+```bash
+cat ~/.claude/skills/gstack/plan-eng-review/SKILL.md
+```
+
+Lock in architecture, data flow, edge cases, test plan. Append `## Plan`
+to PIPELINE.md.
 
 ```bash
 git add PIPELINE.md && git commit -m "pipeline: plan" && git push
@@ -143,19 +148,19 @@ git add PIPELINE.md && git commit -m "pipeline: plan" && git push
 
 ## Phase 4 — Build
 
-Implement the changes. This is the core development phase.
+Implement the changes.
 
-1. Make the minimal, correct changes needed
-2. Follow existing code patterns and conventions
-3. Write tests if the project has a test framework
-4. If addressing review feedback from a previous iteration, fix every point
+1. Read PIPELINE.md for context (task, investigation, plan)
+2. Make the minimal, correct changes needed
+3. Follow existing code patterns
+4. Write tests if the project has a test framework
 
 Run tests:
 ```bash
 npm test 2>/dev/null || bun test 2>/dev/null || pytest 2>/dev/null || go test ./... 2>/dev/null || echo "No test runner detected"
 ```
 
-Commit changes:
+Commit:
 ```bash
 git add -A && git commit -m "pipeline: implement changes" && git push
 ```
@@ -166,100 +171,101 @@ Append `## Build` to PIPELINE.md with files changed and test results.
 
 ## Phase 5 — Review
 
-Now review your own changes as a staff engineer looking for production bugs.
+**Read the gstack review skill and follow its FULL methodology:**
+
+```bash
+cat ~/.claude/skills/gstack/review/SKILL.md
+```
+
+Follow every step — the checklist, the completeness checks, the regression
+analysis, the auto-fix patterns. Review the diff:
 
 ```bash
 git diff main..HEAD
 ```
 
-Review for:
-1. **Production bugs** — logic errors, race conditions, null pointers, missing error handling
-2. **Completeness** — all edge cases handled? missing validation?
-3. **Test coverage** — are changes tested? right assertions?
-4. **Regressions** — could changes break existing functionality?
+If you find issues: fix them, commit, re-review. Max 3 fix iterations.
 
-If you find issues: fix them now, commit, then re-review.
-
-Append `## Review` to PIPELINE.md with verdict (APPROVED or findings fixed).
+Append `## Review` to PIPELINE.md with verdict and findings.
 
 ```bash
-git add -A PIPELINE.md && git commit -m "pipeline: review complete" && git push
+git add -A PIPELINE.md && git commit -m "pipeline: review" && git push
 ```
 
 ---
 
 ## Phase 6 — Security
 
-Run a security audit on the diff following gstack /cso methodology.
+**Read the gstack cso skill and follow its FULL methodology:**
 
 ```bash
-git diff main..HEAD
+cat ~/.claude/skills/gstack/cso/SKILL.md
 ```
 
-Check against OWASP Top 10:
-- A01 Broken Access Control
-- A02 Cryptographic Failures
-- A03 Injection (SQL, XSS, command)
-- A05 Security Misconfiguration
-- A07 Authentication Failures
+Follow the complete OWASP Top 10 + STRIDE audit. Apply the confidence gate
+(8/10+), the 17 false positive exclusions, the independent verification.
+Each finding must have a concrete exploit scenario.
 
-Only report findings with 8/10+ confidence and a concrete exploit scenario.
+If critical vulnerabilities found: fix them, commit, re-audit.
 
-If critical vulnerabilities found: fix them now, commit, re-audit.
-
-Append `## Security` to PIPELINE.md with verdict (PASSED or findings fixed).
+Append `## Security` to PIPELINE.md with verdict.
 
 ```bash
-git add -A PIPELINE.md && git commit -m "pipeline: security audit" && git push
+git add -A PIPELINE.md && git commit -m "pipeline: security" && git push
 ```
 
 ---
 
 ## Phase 7 — QA
 
-Test the changes. Run automated tests first:
+**Read the gstack qa skill and follow its methodology:**
 
 ```bash
-npm test 2>/dev/null || bun test 2>/dev/null || pytest 2>/dev/null || echo "No test runner"
+cat ~/.claude/skills/gstack/qa/SKILL.md
 ```
 
-If a staging URL is available and the browse binary exists, test visually:
+Run automated tests. If a staging URL exists and the browse binary is available,
+test visually:
 
 ```bash
 B=~/.claude/skills/gstack/browse/dist/browse
-[ -x "$B" ] && $B goto {STAGING_URL} && $B snapshot -i
+[ -x "$B" ] && echo "Browse available" || echo "No browse binary — skip browser tests"
 ```
 
-If bugs found: fix them, add regression tests, re-verify.
+If bugs found: fix them, generate regression tests, re-verify.
 
 Append `## QA` to PIPELINE.md with test results.
 
 ```bash
-git add -A PIPELINE.md && git commit -m "pipeline: QA complete" && git push
+git add -A PIPELINE.md && git commit -m "pipeline: qa" && git push
 ```
 
 ---
 
 ## Phase 8 — Ship
 
-Create a pull request with the full pipeline report.
+**Read the gstack ship skill and follow its methodology:**
 
 ```bash
-TITLE=$(head -5 PIPELINE.md | grep -A1 "## Task" | tail -1 | cut -c1-70)
+cat ~/.claude/skills/gstack/ship/SKILL.md
+```
 
+Follow the ship workflow: sync main, final test run, create PR with full
+pipeline report.
+
+```bash
 gh pr create \
-  --title "$TITLE" \
+  --title "$(sed -n '/^## Task/,/^## /p' PIPELINE.md | head -n -1 | tail -n +2 | head -1 | cut -c1-70)" \
   --body "$(cat PIPELINE.md)
 
 ---
 *Created autonomously by the Maestro pipeline.*"
 ```
 
-Append `## Ship` to PIPELINE.md with the PR URL.
-Update `## Status` to `COMPLETE`.
+Update PIPELINE.md `## Status` to `COMPLETE`. Add `## Ship` with PR URL.
 
 ```bash
-git add PIPELINE.md && git commit -m "pipeline: PR created" && git push
+git add PIPELINE.md && git commit -m "pipeline: shipped" && git push
 ```
 
 ---
@@ -267,20 +273,19 @@ git add PIPELINE.md && git commit -m "pipeline: PR created" && git push
 ## Context Management
 
 If at any point the conversation is getting long:
-1. Summarize all completed phases into PIPELINE.md
-2. The file IS your memory — everything important is written there
+1. Summarize completed phases in PIPELINE.md
+2. PIPELINE.md IS your memory — everything important is there
 3. Continue with the next phase
 
 ## Iteration Guard
 
-If review or security finds issues and you've already fixed 3 times:
+If review, security, or QA finds issues and you've already fixed 3 times:
 - Update `## Status` to `NEEDS_HUMAN`
 - Commit and push
-- Stop and report: "Pipeline needs human review after 3 fix iterations"
+- Stop: "Pipeline needs human review after 3 fix iterations"
 
 ## Final Output
 
-Set your final output to:
 ```
 COMPLETE: {PR URL}
 Task: {brief description}
