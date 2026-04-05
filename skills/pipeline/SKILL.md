@@ -251,11 +251,22 @@ in the PR.
 
 Determine: **feature**, **bug-fix**, **security-fix**, or **refactor**.
 
-### Create pipeline branch and PIPELINE.md
+### Create pipeline branch from the default branch
+
+**CRITICAL:** Always branch from the repo's default branch (master/main/develop),
+never from an existing pipeline branch. Check which branch you're on.
 
 ```bash
-git checkout -b pipeline/$(date +%Y%m%d-%H%M%S)
+# Detect default branch and ensure we're on it
+DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | sed 's/.*: //')
+git checkout "$DEFAULT_BRANCH"
+git pull origin "$DEFAULT_BRANCH"
+
+# Create a fresh pipeline branch — include issue number for clarity
+git checkout -b "pipeline/issue-${ISSUE_NUM}-$(date +%Y%m%d-%H%M%S)"
 ```
+
+### Write PIPELINE.md (fresh — never reuse from previous runs)
 
 Write `PIPELINE.md`:
 ```markdown
