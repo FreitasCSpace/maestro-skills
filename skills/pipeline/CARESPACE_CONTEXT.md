@@ -311,78 +311,139 @@ src/
 ## carespace-posture-engine — Posture Analysis Backend
 
 **Repo:** carespace-ai/carespace-posture-engine
-**Stack:** NestJS 11, TypeScript 5.3, TensorFlow MoveNet, PostgreSQL 12+
+**Stack:** NestJS 10, TypeScript 5.3, `@tensorflow/tfjs-node` + MoveNet, `sharp`, `@azure/service-bus`, Jest
+**NOTE:** README mentions Prisma/PostgreSQL but persistence is REMOVED — service is stateless and queue-driven.
 
 ### Purpose
-Analyzes 4-view body images (front, back, left, right) for postural alignment using **Kendall plumb-line methodology**. Detects syndromes (Upper Cross, Lower Cross, Scoliosis, etc.) and outputs severity-scored clinical assessments.
+Clinical posture assessment via **Kendall plumb-line methodology**:
+- **Lateral:** head/shoulder/upperBody/pelvis/knee → F/A/B (Forward/Aligned/Back)
+- **Frontal:** head/shoulder/trunk/pelvis/knee/ankle → L/C/R (Left/Center/Right)
+- Lookup syndromes from **243-entry lateral** and **729-entry frontal** permutation tables
 
 ### Commands
 ```bash
 npm install
-npm run build           # nest build
-npm run start:dev       # nest start --watch
-npm run start:prod      # node dist/main
-npm test                # jest
+npm run start:dev       # port 3001 (APP_PORT)
+npm run build && npm run start:prod
+npm test
+```
+**Env:** `APP_PORT`, `NODE_ENV`, `CORS_ORIGINS`, Azure Service Bus connection vars.
+
+### Architecture — QUEUE-DRIVEN, NOT REST
+**The only HTTP route is `GET /health`.** Real work flows through Azure Service Bus:
+
+```
+Service Bus
+  → ConsumerService → MessageHandlerService → PostureProcessingService
+       → ImageProcessorService     (URL fetch + MoveNet keypoints)
+       → PlumblineExtractorService (keypoints → plumb-line data)
+       → CalculationService → PlumblineEngine
+            → classifyAllSegments / classifyAllFrontalSegments
+            → lookupPermutation / lookupFrontalPermutation
+  → ProducerService (result → bus)
 ```
 
-### Structure
-```
-src/
-├── app.controller.ts
-├── app.module.ts
-├── main.ts
-├── assessment/         — Kendall classification
-│   ├── classifySegments.ts
-│   ├── frontalClassifySegments.ts
-│   ├── permutationTable.ts
-│   ├── frontalPermutationTable.ts
-│   └── __tests__/
-├── modules/
-│   ├── calculation/    — angle math
-│   ├── image/          — image processing
-│   ├── processing/     — pipeline orchestration
-│   └── queue/          — background jobs
-├── types/
-└── utils/
-```
+**Two ingest message types:**
+- `assessment` — downloads image URL, runs MoveNet
+- `ingest` — pre-extracted COCO-17 keypoints, skips MoveNet
 
-### Where to look
+### Key files
+- `src/modules/queue/{consumer,message-handler,producer}.service.ts`
+- `src/modules/processing/processing.service.ts` — `processImage`, `processKeypoints`, `validateImageUrl`
+  - **Hostname allowlist:** `*.blob.core.windows.net`, `*.carespace.ai`, `localhost`, `127.0.0.1`
+- `src/modules/image/image-processor.service.ts` — `fetchImageFromUrl`, `extractKeypoints` (sharp + MoveNet)
+- `src/modules/image/plumbline-extractor.service.ts`
+- `src/modules/image/{image-annotation,image-cache,image-storage}.service.ts` — Azure Blob
+- `src/modules/calculation/engines/plumbline.engine.ts`
+- `src/assessment/{classifySegments,frontalClassifySegments,permutationTable,frontalPermutationTable}.ts`
+- `src/utils/plumbLineCore.ts`
+- `src/types/{coco,messages,postureScanResult}.ts`
+
+### Where to look by issue type
 | Issue | Look in |
 |-------|---------|
-| Wrong angle calculation | `src/modules/calculation/` |
-| Image upload / processing | `src/modules/image/` |
-| Wrong syndrome classification | `src/assessment/` |
-| Background queue | `src/modules/queue/` |
+| Image fetch / decode / URL rejected | `image-processor.service.ts`, `validateImageUrl` |
+| MoveNet inference / keypoints | `image-processor.service.ts` `extractKeypoints` |
+| Plumb-line extraction | `plumbline-extractor.service.ts`, `utils/plumbLineCore.ts` |
+| Wrong syndrome classification | `assessment/*ClassifySegments.ts`, `*PermutationTable.ts` |
+| Result shape / API response | `types/postureScanResult.ts`, `types/messages.ts` |
+| Queue errors | `modules/queue/*.service.ts` |
 
 ---
 
 ## carespace-3d-body-service — 3D Body Service
 
 **Repo:** carespace-ai/carespace-3d-body-service
-**Stack:** Python 3.11, FastAPI, Uvicorn, PyTorch, Pytorch Lightning, sam-3d-body (HuggingFace), Pyrender
+**Stack:** Python, FastAPI 0.115 + Uvicorn 0.34, PyTorch + torchvision, Pillow, opencv-python-headless, NumPy, Pydantic v2, huggingface-hub, pyrender, timm, einops, roma, loguru
+**Wraps:** Meta's [SAM-3D Body](https://huggingface.co/facebook/sam-3d-body-dinov3) model (cloned via `setup.sh` into `./sam-3d-body/`)
+
+### Purpose
+Single-image 3D body mesh reconstruction. Given a base64 RGB image, returns SMPL-style mesh vertices/faces, 2D keypoints, camera translation, focal length, and bbox.
 
 ### Commands
 ```bash
-# Setup (one-time)
+# One-time setup
 pip install torch torchvision
-./setup.sh                      # clones sam-3d-body repo
+./setup.sh                       # clones sam-3d-body repo, installs xtcocotools/pycocotools
 pip install -r requirements.txt
 
 # Run
-./run_dev.sh                    # uvicorn
-docker build -t 3d-body .       # CUDA 12.4 base image
+./run_dev.sh                     # uvicorn
+docker compose up                # CUDA 12.4 base image
 ```
 
-### Structure
-```
-app/
-├── __init__.py
-├── main.py        — FastAPI app
-├── model.py       — sam-3d-body model loader
-└── schemas.py     — Pydantic request/response
+**Env:**
+- `SAM3D_DEVICE` (`cuda`/`mps`/`cpu`, auto-detected)
+- `SAM3D_HF_REPO` (default `facebook/sam-3d-body-dinov3`)
+- `CORS_ORIGINS` (defaults: `localhost:3000`, `develop/staging/app.carespace.ai`)
+
+**No README, no pyproject.toml, no automated tests in repo.**
+
+### Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | `{"status":"ok","service":"sam3d-body"}` |
+| `POST /api/v1/jobs` | **Async submit.** Body: `{ image: <base64 or data-URL>, gender?: "male"\|"female" }`. Decodes, resizes to max 512px, spawns daemon thread running `predict()`. Returns `{job_id, status: "processing"}` |
+| `GET /api/v1/jobs/{job_id}` | Poll status: `processing` / `complete` / `error`. **In-memory store** (`_jobs` dict) — lost on restart, no TTL |
+| `POST /api/v1/reconstruct` | **Legacy synchronous.** 400 bad image, 422 no person detected, 500 inference failure |
+
+### Response shape (`app/schemas.py`)
+```python
+vertices: list[list[float]]    # Nx3
+faces: list[list[int]]         # Mx3
+keypoints_2d: list[list[float]]
+camera_translation: [tx, ty, tz]
+focal_length: float
+bbox: [x1, y1, x2, y2]
 ```
 
-Runs on **NVIDIA CUDA 12.4 GPU**. Uses sam-3d-body model for 3D body mesh from images.
+### Key files
+- `app/main.py` — FastAPI app, CORS, lifespan model load, in-memory job store, all routes
+- `app/model.py` — `load_model()` (singleton `_estimator`), `get_device()`, `predict()`, sys.path injection for `sam-3d-body`
+- `app/schemas.py` — Pydantic request/response
+- `setup.sh` — clones upstream sam-3d-body
+- `run_dev.sh` — uvicorn launcher
+- `Dockerfile`, `docker-compose.yml`
+- `requirements.txt`
+
+### Notes / quirks
+- **MPS (Apple Silicon) does NOT support float64** required by the MHR TorchScript model — `model.py` forces main model to CPU and only uses MPS/GPU for human detector + FOV estimator
+- Upstream `load_sam_3d_body_hf` ignores its `device` kwarg → service calls `_hf_download` then `load_sam_3d_body(..., device=...)` directly
+- `predict()` only takes the **first detected person** from a list result
+- Avoids importing `notebook/utils.py` from sam-3d-body (pulls in pyrender/OpenGL, broken on headless/macOS)
+- **Job store is in-memory + per-thread, NOT horizontally scalable**
+
+### Where to look by issue type
+| Issue | Look in |
+|-------|---------|
+| Image decode / resize | `app/main.py` ~lines 110-128 (`create_job`) and ~186-202 (`reconstruct`) |
+| Model loading / device / HF download | `app/model.py` `load_model()` + `get_device()` |
+| "No person detected" / inference fail | `app/model.py` `predict()` + `_extract_numpy/_extract_scalar` |
+| API response shape | `app/schemas.py`, `ReconstructResponse(**result)` in `main.py` |
+| Error handling | `main.py` — 400/422/500 paths, async errors written to job dict |
+| Job lifecycle / memory leak | `_jobs`, `_jobs_lock`, `_set_job`, `_get_job`, `_run_inference_job` in `main.py` |
+| CORS / hosting | `cors_origins` block in `main.py` (override via `CORS_ORIGINS`) |
 
 ---
 
