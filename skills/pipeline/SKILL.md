@@ -20,6 +20,13 @@ done. This is a BRAND NEW task. Ignore everything in the current directory.
 Your very first action must be to read the task input and clone a fresh repo.
 NEVER say "already completed" — every run is a new task.
 
+**NEVER fetch binary files.** Do NOT use WebFetch on URLs ending in `.png`,
+`.jpg`, `.jpeg`, `.gif`, `.svg`, `.pdf`, `.zip`, or any image/binary URL.
+GitHub issue screenshots are for human reference — you cannot parse them.
+If an issue links to a screenshot, read the issue TEXT description only and
+ignore the image URLs. Fetching binary data will flood your context with
+garbage and break the session.
+
 ---
 
 ## Step 0 — Setup
@@ -65,8 +72,8 @@ rm -rf /tmp/pipeline-work 2>/dev/null
 mkdir -p /tmp/pipeline-work
 cd /tmp/pipeline-work
 
-# Clone the CORRECT repo fresh
-gh repo clone "$REPO" . 2>&1
+# Clone the CORRECT repo fresh (shallow clone — large repos fail without --depth)
+gh repo clone "$REPO" . -- --depth=50 2>&1
 
 # Delete any stale PIPELINE.md from previous pipeline runs committed to the repo
 rm -f PIPELINE.md 2>/dev/null
@@ -255,6 +262,9 @@ Determine: **feature**, **bug-fix**, **security-fix**, or **refactor**.
 never from an existing pipeline branch. Check which branch you're on.
 
 ```bash
+# Unshallow the clone so we can branch and diff properly
+git fetch --unshallow 2>/dev/null || true
+
 # Detect default branch and ensure we're on it
 DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | sed 's/.*: //')
 git checkout "$DEFAULT_BRANCH"
