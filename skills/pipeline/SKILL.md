@@ -84,28 +84,27 @@ gh issue view "$ISSUE_NUM" --repo "$REPO" --json title,body,labels,state
 
 ### Download issue screenshots (if any)
 
-If the issue body contains image attachments, download them using `gh-asset`
-(handles GitHub's authenticated user-attachment URLs) or `curl` (for public URLs):
+If the issue body contains image attachments, download them. GitHub uses two
+URL patterns — authenticated user-attachments and public raw URLs:
 
 ```bash
 mkdir -p /tmp/pipeline-screenshots
 ISSUE_BODY=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json body --jq .body)
-
-# Extract GitHub user-attachment asset IDs (e.g. github.com/user-attachments/assets/UUID)
-ASSET_IDS=$(echo "$ISSUE_BODY" | grep -oP 'user-attachments/assets/\K[a-f0-9-]+' | head -3)
 COUNT=0
-for id in $ASSET_IDS; do
+
+# Pattern 1: GitHub user-attachments (needs auth — use gh api to follow redirects)
+for url in $(echo "$ISSUE_BODY" | grep -oP 'https://github\.com/user-attachments/assets/[a-f0-9-]+' | head -3); do
   COUNT=$((COUNT + 1))
-  gh-asset download "$id" "/tmp/pipeline-screenshots/issue-${COUNT}" 2>/dev/null && \
-    echo "Downloaded: issue-${COUNT} (gh-asset)" || echo "Failed: $id"
+  curl -sL --max-time 15 -H "Authorization: token $GITHUB_TOKEN" "$url" \
+    -o "/tmp/pipeline-screenshots/issue-${COUNT}.png" 2>/dev/null && \
+    echo "Downloaded: issue-${COUNT}.png (user-attachment)" || true
 done
 
-# Also try public image URLs (e.g. raw.githubusercontent.com)
-PUBLIC_URLS=$(echo "$ISSUE_BODY" | grep -oP 'https://raw\.githubusercontent\.com/[^\s\)\"]+\.(png|jpg|jpeg|gif|webp)' | head -3)
-for url in $PUBLIC_URLS; do
+# Pattern 2: Public raw.githubusercontent URLs
+for url in $(echo "$ISSUE_BODY" | grep -oP 'https://raw\.githubusercontent\.com/[^\s\)\"]+\.(png|jpg|jpeg|gif|webp)' | head -3); do
   COUNT=$((COUNT + 1))
-  curl -sL --max-time 10 "$url" -o "/tmp/pipeline-screenshots/issue-${COUNT}.png" 2>/dev/null && \
-    echo "Downloaded: issue-${COUNT}.png (curl)" || true
+  curl -sL --max-time 15 "$url" -o "/tmp/pipeline-screenshots/issue-${COUNT}.png" 2>/dev/null && \
+    echo "Downloaded: issue-${COUNT}.png (public)" || true
 done
 
 [ "$COUNT" -eq 0 ] && echo "No screenshots found in issue"
