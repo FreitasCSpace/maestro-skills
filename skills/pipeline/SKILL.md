@@ -912,36 +912,47 @@ If at any point the conversation is getting long:
 The Read tool has a **10,000 token limit** (hardcoded in Claude Code, cannot
 be changed). Large CSS, config, and data files WILL fail with "File content
 exceeds maximum allowed tokens". When this happens, **DO NOT give up or skip
-the file.** Use these approaches:
+the file.**
 
-1. **Use grep to find the exact line first:**
-   ```bash
-   grep -n "font-size-base\|the-thing-you-need" path/to/large-file.css
-   ```
-   This gives you the line number. Then read just that section.
+### Step 1: Run code-map to get the file structure
 
-2. **Read with offset and limit:**
+Before reading any file over 200 lines, run the structure map first:
+
+```bash
+bash ~/.claude/skills/pipeline/code-map.sh path/to/file.tsx
+```
+
+This outputs a table of contents with line numbers — functions, classes,
+CSS selectors, exports. You can then read ONLY the section you need.
+
+### Step 2: Read the specific section
+
+Use one of these approaches to read just what you need:
+
+1. **Read with offset and limit** (preferred):
    ```
    Read tool → file_path: path/to/file.css, offset: 550, limit: 50
    ```
-   This reads only lines 550-600, staying well under the token limit.
 
-3. **Use cat via Bash for full file reads:**
+2. **grep to find the exact line:**
+   ```bash
+   grep -n "font-size-base" path/to/large-file.css
+   ```
+
+3. **cat via Bash for full file reads** (no token limit):
    ```bash
    cat path/to/large-file.css
    ```
-   The Bash tool has NO token limit. If you need the full file content,
-   use `cat` instead of the Read tool. This always works.
+   The Bash tool has NO token limit. Use this when you need the full file.
 
-4. **For edits on large files:** Use sed with the line number from grep:
+4. **For edits on large files:** Use sed with the line number:
    ```bash
-   grep -n "old-value" path/to/file.css  # find the line number
-   sed -i 's/old-value/new-value/' path/to/file.css  # replace it
+   grep -n "old-value" path/to/file.css
+   sed -i 's/old-value/new-value/' path/to/file.css
    ```
 
 **NEVER skip a file because it's too large to read.** There is always a way
-to read it — grep + offset, or just `cat` via Bash. The Read tool's limit
-does NOT apply to Bash output.
+to read it — code-map + offset, grep + offset, or `cat` via Bash.
 
 ## Exploration Best Practices
 
