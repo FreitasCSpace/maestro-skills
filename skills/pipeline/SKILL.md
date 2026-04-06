@@ -42,25 +42,78 @@ just file reads. ToolSearch is only for loading deferred tool schemas.
 
 ## CareSpace Codebase Context (READ THIS FIRST)
 
-Before doing anything, read the CareSpace codebase context. It tells you which
-repo handles what, the architecture, conventions, and where to look for issues
-by type. This is the most efficient way to orient yourself.
+Before doing ANYTHING — even before parsing the task — read the CareSpace
+codebase context. It contains the full architecture diagram, all 11 repo
+layouts, where to look for issues by type, the bug-tracker issue body format,
+and HIPAA rules. **This file is your map.**
 
 ```bash
 cat ~/.claude/skills/pipeline/CARESPACE_CONTEXT.md
 ```
 
-This file contains:
-- What CareSpace is (HIPAA healthcare platform)
-- All 11 active repos and their stacks
-- Bug tracker issue body format (Codebase Context, Claude Code Fix Instructions sections)
-- Frontend (carespace-ui) atomic design + path aliases + Redux slices + routes
-- Backend (carespace-admin) NestJS modules + Prisma + auth
-- Posture engine, 3D body service, Strapi CMS, mobile apps, SDK
-- "Where to look by issue type" tables for each repo
-- HIPAA / PHI / audit log requirements
+**You read this file ONCE per session. Never read it again.** It is in your
+context for the entire run.
 
-After reading, you'll know exactly which repo + folder to clone and focus on.
+After reading, use it to:
+
+1. **Identify the target repo before cloning** — the issue body has a
+   `Repository` field in the Environment section. Match it to the Repository
+   Map in the context file. You now know the stack, build commands, default
+   branch, and where to look.
+
+2. **Read the issue body's `Codebase Context` and `Claude Code Fix Instructions`
+   sections.** The bug-tracker already used Claude Opus 4.5 + a per-repo
+   codebase context to generate these. **Use the `claudePrompt` as your
+   starting point** — don't redo that work.
+
+3. **Use the "Where to look by issue type" tables** in the context file to
+   jump directly to the relevant folder. Don't explore blindly.
+
+4. **Check the HIPAA notes** before touching any file that handles PHI
+   (Profile, Client, Evaluation, Survey, etc).
+
+---
+
+## Anti-Waste Rules (MANDATORY)
+
+These rules prevent burning Claude tokens on redundant work:
+
+### 1. Never re-read a file you already read
+
+Once you've read a file in this session, **its contents are in your context**.
+Do NOT use the Read tool on it again. If you need to reference it, scroll back
+in your conversation. Only re-read if:
+- The file was modified by you or a tool (Edit, Write, sed) since you last read it
+- The user explicitly asks you to refresh it
+
+This applies to:
+- CARESPACE_CONTEXT.md (read ONCE at start, never again)
+- The issue body (read ONCE via `gh issue view`)
+- CLAUDE.md / package.json / config files
+- Source files you've already inspected
+
+### 2. Never re-read PIPELINE.md unless you wrote to it
+
+PIPELINE.md is YOUR memory of the run. You wrote it. You know what's in it.
+Only re-read after appending a new section if you need the latest content.
+
+### 3. Never re-explore the codebase between phases
+
+If you found the relevant files in the Investigate phase, those are your files.
+Use them in Build, Review, QA, Ship — don't re-grep / re-find / re-explore.
+Track relevant files in PIPELINE.md `## Relevant Files` so you have a single
+source of truth.
+
+### 4. Use the context map, not blind exploration
+
+For every file you want to read, ask: "Did the CARESPACE_CONTEXT.md or the
+issue's `Codebase Context` section already tell me about this?" If yes,
+go directly. If no, grep first.
+
+### 5. One search per question
+
+Don't run 3 grep variations of the same query. Pick the best one. If it
+returns nothing, try ONE alternative phrasing — then move on.
 
 ---
 
