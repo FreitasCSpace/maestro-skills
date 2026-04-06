@@ -901,9 +901,10 @@ If at any point the conversation is getting long:
 
 ## Handling Large Files (CRITICAL)
 
-The Read tool has a **10,000 token limit**. Large CSS, config, and data files
-WILL fail with "File content exceeds maximum allowed tokens". When this happens,
-**DO NOT give up or skip the file.** Use these approaches:
+The Read tool has a **10,000 token limit** (hardcoded in Claude Code, cannot
+be changed). Large CSS, config, and data files WILL fail with "File content
+exceeds maximum allowed tokens". When this happens, **DO NOT give up or skip
+the file.** Use these approaches:
 
 1. **Use grep to find the exact line first:**
    ```bash
@@ -917,10 +918,12 @@ WILL fail with "File content exceeds maximum allowed tokens". When this happens,
    ```
    This reads only lines 550-600, staying well under the token limit.
 
-3. **Use sed/awk for targeted extraction:**
+3. **Use cat via Bash for full file reads:**
    ```bash
-   sed -n '550,600p' path/to/large-file.css
+   cat path/to/large-file.css
    ```
+   The Bash tool has NO token limit. If you need the full file content,
+   use `cat` instead of the Read tool. This always works.
 
 4. **For edits on large files:** Use sed with the line number from grep:
    ```bash
@@ -929,7 +932,8 @@ WILL fail with "File content exceeds maximum allowed tokens". When this happens,
    ```
 
 **NEVER skip a file because it's too large to read.** There is always a way
-to read the part you need. grep + offset/limit solves every case.
+to read it — grep + offset, or just `cat` via Bash. The Read tool's limit
+does NOT apply to Bash output.
 
 ## Exploration Best Practices
 
