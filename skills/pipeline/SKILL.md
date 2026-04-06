@@ -899,6 +899,38 @@ If at any point the conversation is getting long:
 2. PIPELINE.md IS your memory — everything important is there
 3. Continue with the next phase
 
+## Handling Large Files (CRITICAL)
+
+The Read tool has a **10,000 token limit**. Large CSS, config, and data files
+WILL fail with "File content exceeds maximum allowed tokens". When this happens,
+**DO NOT give up or skip the file.** Use these approaches:
+
+1. **Use grep to find the exact line first:**
+   ```bash
+   grep -n "font-size-base\|the-thing-you-need" path/to/large-file.css
+   ```
+   This gives you the line number. Then read just that section.
+
+2. **Read with offset and limit:**
+   ```
+   Read tool → file_path: path/to/file.css, offset: 550, limit: 50
+   ```
+   This reads only lines 550-600, staying well under the token limit.
+
+3. **Use sed/awk for targeted extraction:**
+   ```bash
+   sed -n '550,600p' path/to/large-file.css
+   ```
+
+4. **For edits on large files:** Use sed with the line number from grep:
+   ```bash
+   grep -n "old-value" path/to/file.css  # find the line number
+   sed -i 's/old-value/new-value/' path/to/file.css  # replace it
+   ```
+
+**NEVER skip a file because it's too large to read.** There is always a way
+to read the part you need. grep + offset/limit solves every case.
+
 ## Exploration Best Practices
 
 These practices help you stay efficient on large repos. They are guidelines,
@@ -924,10 +956,29 @@ If review, security, or QA finds issues and you've already fixed 3 times:
 - Commit and push
 - Stop: "Pipeline needs human review after 3 fix iterations"
 
+## Completion Gate (MANDATORY)
+
+**You are NOT done until a PR exists.** Before outputting the final result:
+
+1. Verify a PR was created: `gh pr list --head $(git branch --show-current) --json url`
+2. If no PR exists, you have NOT completed the task — go back to Phase 4
+3. If you hit an error you cannot solve, output `FAILED:` not `COMPLETE:`
+
+**NEVER report success without a PR URL.** A run that reads files and gives up
+is a FAILURE, not a success. If you cannot complete the task, say so explicitly.
+
 ## Final Output
 
+If task completed:
 ```
 COMPLETE: {PR URL}
 Task: {brief description}
 Phases: {list of phases completed}
+```
+
+If task could not be completed:
+```
+FAILED: {reason}
+Task: {brief description}
+Blocker: {what prevented completion}
 ```
