@@ -13,3 +13,8 @@ skills:
     description: "Reference skill — CareSpace security standards, HIPAA rules, OWASP healthcare context"
     prompt: "/carespace-security-standards"
     max_turns: 10
+
+  - name: pipeline
+    description: "Autonomous dev pipeline — full gstack sprint from issue to PR (investigate, build, review, security, QA, ship)"
+    prompt: "/pipeline"
+    max_turns: 200
