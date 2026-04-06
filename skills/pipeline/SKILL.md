@@ -522,32 +522,24 @@ cat ~/.claude/skills/gstack/ship/SKILL.md
 
 ### Create PR
 
-Follow the ship workflow: sync main, final test run, create TWO PRs.
+Follow the ship workflow: sync main, final test run, create PR to develop.
 
 ```bash
-DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | sed 's/.*: //')
 PR_TITLE="$(sed -n '/^## Task/,/^## /p' PIPELINE.md | head -n -1 | tail -n +2 | head -1 | cut -c1-70)"
 PR_BODY="$(cat PIPELINE.md)
 
 ---
 *Created autonomously by the Maestro pipeline.*"
 
-# PR 1: pipeline branch → develop
-DEVELOP_PR=$(gh pr create \
+# PR targets develop — changes get reviewed there first.
+# Once verified in develop, a separate develop → main PR handles promotion.
+gh pr create \
   --base "develop" \
   --title "$PR_TITLE" \
-  --body "$PR_BODY" 2>&1)
-echo "PR to develop: $DEVELOP_PR"
-
-# PR 2: pipeline branch → main/master
-MAIN_PR=$(gh pr create \
-  --base "$DEFAULT_BRANCH" \
-  --title "$PR_TITLE" \
-  --body "$PR_BODY" 2>&1)
-echo "PR to $DEFAULT_BRANCH: $MAIN_PR"
+  --body "$PR_BODY"
 ```
 
-Update PIPELINE.md `## Status` to `COMPLETE`. Add `## Ship` with both PR URLs.
+Update PIPELINE.md `## Status` to `COMPLETE`. Add `## Ship` with PR URL.
 
 ```bash
 git add PIPELINE.md && git commit -m "pipeline: shipped" && git push
