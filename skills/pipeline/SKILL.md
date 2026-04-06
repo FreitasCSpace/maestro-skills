@@ -413,12 +413,11 @@ to the issue. **DO NOT explore the entire codebase.** Instead:
 # Then read ONLY those files
 ```
 
-**CONTEXT BUDGET:** You have ~200k tokens. Each file read costs ~500-2000 tokens.
-Budget: max 40 files read in the entire pipeline run. Prioritize:
-1. The files directly named in the issue (2-5 files)
-2. Their direct imports/dependencies (5-10 files)
-3. Related test files (2-5 files)
-4. Config files already read in the map (free — already in context)
+**SMART EXPLORATION:** Use grep to find the right files first, then read them.
+Start with the files directly named in the issue, then follow imports outward.
+Prefer reading specific line ranges over full files when you only need part of it.
+Read as many files as you need — but always grep-first to avoid wasting reads
+on irrelevant files.
 
 **USE SUB-AGENTS for parallel exploration.** When you need to understand multiple
 areas of the codebase, use the `Agent` tool to spawn exploration sub-agents:
@@ -760,23 +759,23 @@ If at any point the conversation is getting long:
 2. PIPELINE.md IS your memory — everything important is there
 3. Continue with the next phase
 
-## Exploration Rules (MANDATORY)
+## Exploration Best Practices
 
-These rules prevent context exhaustion on large repos:
+These practices help you stay efficient on large repos. They are guidelines,
+not hard limits — read as many files as the task requires.
 
-1. **NEVER list or read entire directories.** Always use `grep -rn` or `find`
-   with specific patterns to locate files.
-2. **Max 40 file reads per pipeline run.** Each file read is expensive. Use
-   grep to verify a file is relevant before reading it.
-3. **Use sub-agents for exploration.** When you need to understand an area of
-   the codebase, spawn an `Explore` sub-agent instead of reading files directly.
-   The sub-agent's context is separate and doesn't bloat your main session.
-4. **Read the codebase map first.** `.pipeline/CODEBASE_MAP.md` tells you where
+1. **Grep before read.** Before reading a file, grep for the specific function
+   or component name to verify it's the right file. Avoids wasting context on
+   irrelevant files.
+2. **Read the codebase map first.** `.pipeline/CODEBASE_MAP.md` tells you where
    things are. Don't re-explore what's already mapped.
-5. **Read files partially.** Use `head -100` or read specific line ranges instead
-   of full files when you only need to understand the interface/exports.
-6. **Grep before read.** Before reading a file, grep for the specific function
-   or component name to verify it's the right file.
+3. **Use sub-agents for broad exploration.** When you need to understand multiple
+   areas of the codebase at once, spawn `Explore` sub-agents in parallel. Their
+   context is separate — keeps your main session clean for the actual work.
+4. **Read files partially when possible.** Use specific line ranges instead of
+   full files when you only need to understand the interface or exports.
+5. **Never blindly traverse directories.** Always use `grep -rn` or `find` with
+   specific patterns rather than reading every file in a folder.
 
 ## Iteration Guard
 
