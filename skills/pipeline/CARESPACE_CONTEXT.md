@@ -92,43 +92,62 @@ GitHub issues are auto-created by **carespace-bug-tracker** (Next.js + Anthropic
 ## carespace-ui — Web Application (Frontend)
 
 **Repo:** carespace-ai/carespace-ui
-**Stack:** React 18, TypeScript 5, Ant Design 5, Redux Toolkit, CRACO (NOT Vite, despite README), Tailwind CSS, Storybook, Playwright
+**Stack:** React 18.3, TypeScript 5.4, Ant Design 5.27, CRACO (NOT Vite despite README), Redux Toolkit 1.9, Playwright 1.56, TensorFlow.js + MediaPipe (pose estimation), i18next, Tailwind CSS, Styled Components, Storybook
+**Build tool:** CRACO + ESBuild + Webpack (custom splitChunks for antd, tensorflow, mediapipe, react vendor bundles)
 
 ### Commands
 ```bash
-npm install --legacy-peer-deps   # install (max-old-space-size=8192)
-npm start                         # craco start
-npm run build                     # craco build
-npm test                          # craco test
-npm run lint                      # eslint, max-warnings 0
-npm run lint-fix                  # eslint --fix
-npm run test:e2e                  # Playwright (TEST_ENV=local|develop|staging)
-npm run storybook                 # port 6006
+npm install --legacy-peer-deps        # install (NODE_OPTIONS=--max_old_space_size=8192)
+npm start                              # craco start
+npm run build                          # craco build
+npm test                               # craco test (Jest)
+npm run lint                           # eslint, max-warnings 0 + custom carespace/* token rules
+npm run lint-fix                       # eslint --fix
+npm run test:e2e                       # Playwright (TEST_ENV=local|develop|staging)
+npm run storybook                      # port 6006
 ```
 
-### Architecture — Atomic Design
+### Architecture — Strict Atomic Design
 
 ```
 src/
 ├── components/
-│   ├── atoms/        — buttons, inputs, badges, modals (Logo, Modal, Badge, Loading, CommandPalette)
-│   ├── molecules/    — composites (FormComponents, WeeklyCalendar, MPVideoRecord)
-│   ├── organisms/    — feature components (OVideoPoseEstimatorUpdated, ORom, ORehab, OProgram)
-│   ├── templates/    — page layouts (sparse usage)
-│   └── pages/        — route-mapped views (PatientDashboard, AdminUnassignedPatients, PostureScan, Rom, Rehab)
-├── routers/          — Admin.tsx, SuperAdmin.tsx, Patient.tsx, Public.tsx, Private.tsx, routers.ts
-├── stores/           — Redux Toolkit slices (see below)
-├── services/         — API clients (RTK Query)
-├── api/              — REST clients
-├── hooks/            — custom hooks (useTypedDispatch, useTypedSelector)
-├── styles/           — design-system.css, tokens/primitives.css, antd-theme.ts
-├── icons/            — UntitledIcon system (108 migrated icons)
-├── config/navigation/ — admin.tsx, superAdmin.tsx, user.tsx (sidebar config)
-├── providers/        — ThemeProvider (dark mode)
-└── i18n.ts           — i18next setup
+│   ├── atoms/        ~80+ dirs — Badge, Avatar, Modal, Loading, Logo, CommandPalette,
+│   │                   Icon (UntitledIcon), DatePicker, ExerciseCard, MetricCard,
+│   │                   EmptyStateMessage, Drawers, CountDownTimer, FlickeringGrid,
+│   │                   KeyboardShortcutsOverlay, AP transition primitives
+│   ├── molecules/    ~50+ dirs — FormComponents, WeeklyCalendar, AdherenceHeatmap,
+│   │                   ClinicalSummaryCard, MarkdownRenderer, MPImageCapture,
+│   │                   BottomSheet, OutcomeCorrelationChart, PostureComparisonCard,
+│   │                   RecommendationCard, RecurrencePicker, DraggableProgramCard
+│   ├── organisms/    ~35+ dirs — OAdminTriageDashboard, ProgramFlow, RehabFlow, RomFlow,
+│   │                   OPostureDetailView, OBodyModel3D, OPosture3DViewer,
+│   │                   OPhotogrammetryCapture/Viewer, VideoPoseEstimator,
+│   │                   VirtualAgendaView, BulkActionToolbar, EvaluationResultsModal,
+│   │                   RecommendationsList
+│   ├── templates/    sparse usage
+│   └── pages/        ~70+ — PatientDashboard, AdminUnassignedPatients, AdminRegisteredPatients,
+│                       AdminConsentFormPatients, NewPatients, PendingReview, Reviewed,
+│                       OutOfParams, EscalationRequired, FollowUpRequired, PostureScan,
+│                       PostureCaptures, PostureSummaryMobile, RomScan/Summary/Programs,
+│                       Rehab, Settings, Reports, MyReport, OrganizationalReporting,
+│                       AdminSDKKeys, ConsultationMode, DesignSystem, SDK, UserDetailsModal
+├── routers/          Admin.tsx, SuperAdmin.tsx, Patient.tsx, Public.tsx, Private.tsx, SDK.tsx, routers.ts
+├── stores/           Redux Toolkit slices (see below)
+├── services/         API clients (RTK Query)
+├── api/              REST clients
+├── hooks/            custom hooks (useTypedDispatch, useTypedSelector)
+├── styles/           design-system.css, tokens/{primitives,colors,semantic,layout,polish}.css,
+│                     themes/{default,light,dark,vibrant}.css, antd-theme.ts
+├── icons/            UntitledIcon system (108+ migrated icons)
+├── config/navigation/  admin.tsx, superAdmin.tsx, user.tsx (sidebar config)
+├── providers/        ThemeProvider (dark mode)
+├── poseestimator/    MediaPipe + TensorFlow ML pipeline (controller, rom, rehab, performance, assets)
+├── workers/          Web workers
+└── i18n.ts           i18next setup
 ```
 
-### Path Aliases (always use these — never `../../`)
+### Path Aliases (~48 total, always use these — never `../../`)
 
 ```
 @atoms/*       → src/components/atoms/*
@@ -136,6 +155,7 @@ src/
 @organisms/*   → src/components/organisms/*
 @pages/*       → src/components/pages/*
 @templates/*   → src/components/templates/*
+@components/*  → src/components/*
 @stores/*      → src/stores/*
 @services/*    → src/services/*
 @hooks/*       → src/hooks/*
@@ -147,6 +167,19 @@ src/
 @providers/*   → src/providers/*
 @styles/*      → src/styles/*
 @strapi        → src/Strapi.ts
+@carespace-icons/* → src/icons/*
+@controller/*  → src/poseestimator/controller/*
+@rom/*         → src/poseestimator/rom/*
+@rehab/*       → src/poseestimator/rehab/*
+@performance/* → src/poseestimator/performance/*
+@assets        → src/poseestimator/assets/*
+@screens/*     → src/screens/*
+@common/*      → src/common/*
+@test-utils/*  → src/test-utils/*
+@types/*       → src/types/*
+@sdk/*         → sdk/*
+@demo/*        → src/demo/*
+@workers/*     → src/workers/*
 ```
 
 ### Redux Slices (organized by feature)
@@ -199,16 +232,18 @@ ADMIN_SDK_API_KEYS: '/admin/sdk/api-keys'
 
 | Issue type | Look in |
 |-----------|---------|
-| UI bug on a specific page | `src/components/pages/{Feature}/` |
+| UI bug on a specific page | `src/components/pages/{Feature}/`, `src/components/organisms/O{Feature}/` |
 | Component bug | `src/components/atoms/{Component}/` or molecules/organisms |
-| Routing / navigation | `src/routers/routers.ts`, `src/routers/Admin.tsx`, `src/config/navigation/{role}.tsx` |
-| State management bug | `src/stores/{slice}/` |
-| API call bug | `src/services/`, `src/api/`, RTK Query files in stores |
-| Styling / theme | `src/styles/design-system.css`, `src/styles/tokens/primitives.css`, `Changes.css` |
-| Auth bug | `src/auth/`, `Private.tsx` wrapper |
-| Icon bug | `src/components/atoms/Icon/` (UntitledIcon) |
-| Translation | `src/locales/{en\|es\|...}.json`, run `npm run i18n:validate` |
-| Tests | E2E in `tests/` (Playwright), unit in `src/**/*.test.tsx` (Jest) |
+| Routing / navigation | `src/routers/routers.ts`, `src/routers/{Admin,Patient,SuperAdmin,Private,Public,SDK}.tsx`, `src/config/navigation/{admin,superAdmin,user}.tsx` |
+| State management bug | `src/stores/{clinical,patients,posture,shared,content,activity,dashboard,tools,scan,settings}/{slice}/` |
+| API call bug | `src/services/`, `src/api/`, RTK Query in `src/stores/**/*Api.ts`, axios in `src/utils/Api`, Strapi in `src/Strapi.ts` |
+| Styling / theme | `src/styles/design-system.css`, `src/styles/tokens/{primitives,colors,semantic,layout,polish}.css`, `src/styles/themes/{default,light,dark,vibrant}.css`, `src/styles/antd-theme.ts`, `src/Changes.css`, `tailwind/tailwind.config.js` |
+| Auth bug | `src/auth/`, `src/routers/Private.tsx` (react-auth-kit) |
+| Icon bug | `src/components/atoms/Icon/UntitledIcon.tsx` (always import from `@atoms/Icon`) |
+| Translation | `src/locales/`, `src/i18n.ts`, `scripts/i18n-cli.js`, run `npm run i18n:validate` |
+| Tests | Playwright E2E in `e2e/` and `tests/`, Jest unit in `src/**/*.test.tsx`, a11y via `@axe-core/playwright` |
+| ML / pose detection | `src/poseestimator/{controller,rom,rehab,performance,assets}/`, MediaPipe assets in `public/holistic/` |
+| CommandPalette (Cmd+K) | `src/components/atoms/CommandPalette/` (state machine in `reducer.ts`) |
 
 ### Critical conventions
 
