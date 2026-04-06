@@ -19,15 +19,20 @@ GitHub issues are auto-created by **carespace-bug-tracker** (Next.js + Anthropic
 
 1. Tracker captures: title, description, steps, expected/actual, severity, category, environment, browser
 2. Anthropic API enhances with: rootCauseHypothesis, codebaseContext, claudePrompt (4-6 step fix instructions)
-3. Issue is created in the appropriate repo with this body structure:
+3. Issue is created in the appropriate repo with this **exact** body structure (verbatim from `lib/github-service.ts:126-187`):
 
-```
+````markdown
 ## 🐛 Bug Report
+
 ### Original User Report
 > **{title}**
+>
 > {description}
+> **Expected:** {expectedBehavior}    (only if present)
+> **Actual:** {actualBehavior}        (only if present)
 
 ---
+
 ### AI-Enhanced Description
 {enhancedDescription}
 
@@ -35,39 +40,74 @@ GitHub issues are auto-created by **carespace-bug-tracker** (Next.js + Anthropic
 {rootCauseHypothesis}
 
 ### Codebase Context
-{codebaseContext}  ← Already mentions specific files/aliases to check
+{codebaseContext}    ← sourced from pre-computed *-codebase-context.json
 
 ---
+
 ## Behavior Analysis
+
 ### Expected Behavior
+{enhancedExpectedBehavior}
+
 ### Actual Behavior
+{enhancedActualBehavior}
+
 ### Gap Analysis
+{gapAnalysis}
 
 ---
+
 ## Reproduction Steps
+{stepsToReproduce or "Not provided"}
 
-### Attachments
-- [screenshot-*.png](https://raw.githubusercontent.com/carespace-ai/carespace-bug-tracker/main/bug-attachments/...)
-  OR
-- https://github.com/user-attachments/assets/{uuid}  ← needs auth header
+### Attachments       (only if attachments exist)
+- [{name}]({url}) (X.XX KB)
 
 ---
+
 ## Technical Context
+{technicalContext}
 
 ### Environment
-- **Severity**: low/medium/high/critical
-- **Category**: ui/functionality/performance/security
-- **Priority**: 1-5
-- **Repository**: frontend / backend / mobile-android / mobile-ios / etc
-- **Environment**: e.g. Extension - https://develop.carespace.ai/
-- **Browser**: e.g. Chrome 144 on macOS
+- **Severity**: {low|medium|high|critical}
+- **Category**: {ui|functionality|performance|security}
+- **Priority**: {1-5}/5
+- **Repository**: {targetRepo — AI-routed key into REPOS map}
+- **Environment**: {environment or "Not provided"}
+- **Browser**: {browserInfo or "Not provided"}
+- **Reporter**: {userEmail}                    (only if present)
 
 ---
+
 ## 🤖 Claude Code Fix Instructions
-{4-6 numbered steps with specific files and aliases}
+```
+{claudePrompt — canonical prompt the pipeline AI should consume}
 ```
 
-**Implication for AI agents:** the issue body already contains a `Codebase Context` section with file hints AND a `Claude Code Fix Instructions` section with step-by-step guidance. Read these carefully — they often contain the answer.
+---
+*This issue was automatically created from a customer bug report, enhanced with AI analysis, and routed to the {targetRepo} repository.*
+````
+
+**Where attachments live (CRITICAL):**
+The bug-tracker uploads attachments to a **dedicated `REPOS.attachments` repository on `main`** via Octokit's contents API, then constructs:
+```
+https://raw.githubusercontent.com/{owner}/{REPOS.attachments}/main/{filepath}
+```
+
+So issue attachments use **`raw.githubusercontent.com`** (publicly accessible, no auth needed), NOT `user-attachments/assets/`. Plain `curl` works.
+
+**How AI enhancement works:**
+1. User submits via web form (`app/page.tsx`) or Chrome extension (auto-screenshot)
+2. `app/api/submit-bug/route.ts` receives → sanitizes (`prompt-sanitizer.ts`) → rate-limits → queues
+3. `lib/llm-service.ts` calls **Claude Opus 4.5** (`@anthropic-ai/sdk`) with the user report PLUS the relevant `*-codebase-context.json` (loaded by `codebase-context-loader.ts`)
+4. Claude returns an `EnhancedBugReport` populating every field above PLUS `targetRepo` (intelligent routing), `suggestedLabels`, `priority`, and a ready-to-paste `claudePrompt` for Claude Code
+5. `github-service.ts` formats and creates the issue with labels; `clickup-service.ts` creates linked ClickUp task; outgoing webhooks fire with HMAC-SHA256 signature
+
+**Implication for AI agents fixing these issues:**
+- The `Codebase Context` section already contains specific files/aliases to check
+- The `Claude Code Fix Instructions` section contains a ready-to-paste prompt — **use it as your starting point**
+- The `Repository` field tells you which repo to clone (don't guess from the issue title)
+- Attachments are publicly accessible via `raw.githubusercontent.com` — `curl` without auth works
 
 ## Repository Map
 
@@ -82,7 +122,7 @@ GitHub issues are auto-created by **carespace-bug-tracker** (Next.js + Anthropic
 | **carespace-mobile-ios** | Swift + CocoaPods (Xcodeproj) | master | Native iOS app |
 | **carespace_mobile** | Flutter (Dart 2.x — legacy) | master | Older Flutter app |
 | **carespace-kiosk** | Flutter 3.10 + Riverpod 3 + go_router | master | Correctional facility kiosk |
-| **carespace-sdk** | Dart Flutter module monorepo | master | ROM SDK (embeds in Flutter/iOS/Android) |
+| **carespace-sdk** | `carespace_rom_sdk` v1.0.0 (Flutter package + Google ML Kit) | master | ROM SDK (embeds in Flutter/iOS/Android — NOT on pub.dev) |
 | **carespace-bug-tracker** | Next.js 15 + Anthropic SDK + Octokit | master | Auto bug reporting → GitHub issues |
 
 **Pipeline always branches from master, opens PR to `develop`.**
@@ -566,27 +606,76 @@ bbox: [x1, y1, x2, y2]
 ## carespace-strapi — Headless CMS
 
 **Repo:** carespace-ai/carespace-strapi
-**Stack:** Strapi 5 (Node.js)
-**Purpose:** Stores all clinical content (exercises, surveys, body parts, conditions, etc.). Frontend (`carespace-ui`) reads via Strapi REST/GraphQL.
+**Stack:** Strapi 5.21.0 on Node 18+, React 18 admin, MySQL (`mysql2`) primary / `better-sqlite3` dev, Azure Blob upload provider
+**Deploy:** Azure Container Registry (`acr.sh`, `dockerfile`, `docker-compose.yml`, `bitbucket-pipelines.yml`)
 
-### Content types (`src/api/`)
+### Purpose
+Content backbone for clinical reference data. **Strapi owns:** static/reference clinical content library — exercise definitions, joint anatomy, ROM scan types, program templates, recommendation catalogs, survey templates, diagnostic codes, pain/functional taxonomies, therapist directory, frontend translation strings. Editable by content team via Strapi admin UI.
 
-Clinical reference data:
-- exercise, exercise-category, exercise-position, exercise-progression-step
-- exercise-target-muscle-group, exercise-tag, exercise-modification-option
-- omni-rom-exercise, omni-rom-program, omni-rom-joint, omni-rom-scan-type
-- joint, landmark, body-point, body-region
-- posture-alignment, posture-joint, posture-analytic
-- pain-cause, pain-duration, pain-frequency, pain-status
-- aggravating-factor, relieving-factor, health-sign
-- diagnose-code, medical-history, informed-consent
-- functional-goal, functional-goal-reason
-- survey-template, survey-template-question, survey-template-question-option
-- recommendation, recommendation-category, recommendation-persona
-- program-template, program-experience-level, program-subgoal, program-workout-type
-- premium-plan, frontend-translation, therapist, tool, tag, skill
+### Commands
+```bash
+npm run develop                 # Strapi dev server
+npm run start                   # production
+npm run build                   # build admin
+```
 
-If an issue mentions clinical content (exercise definitions, survey questions, body parts), it likely lives here, **not** in carespace-ui or carespace-admin.
+### Top-level structure
+```
+src/
+├── admin/         — admin UI customizations
+├── api/           — content types (60+, see below)
+├── components/    — reusable component schemas
+├── extensions/    — plugin extensions
+└── index.js       — Strapi bootstrap
+config/, database/, public/, types/
+```
+
+### Content models (60+ in `src/api/`, auto-exposed at `/api/{kebab-plural}`)
+
+**Exercise library:**
+exercise, exercise-category, exercise-tag, exercise-position, exercise-complexity, exercise-intensity-level, exercise-energy-expenditure, exercise-target-muscle-group, exercise-common-mistake, exercise-modification-option (+ levels), exercise-progression-step, exercise-warm-up-suggestion, exercise-cool-down-recommendation, exercise-feedback-point, exercise-exclusion, equipment, tool
+
+**Anatomy / ROM:**
+joint, body-point, body-region, landmark, posture-joint, posture-alignment, posture-analytic, omni-rom-joint, omni-rom-exercise (+ group), omni-rom-program (+ exercise), omni-rom-scan-type, omni-rom-reference
+
+**Programs / templates:**
+program-template, program-exercise-template, program-experience-level, program-subgoal, program-time-availability, program-workout-type, premium-plan, skill
+
+**Clinical / intake:**
+diagnose-code, medical-history, health-sign, informed-consent, audit-classification, aggravating-factor, relieving-factor, pain-cause, pain-duration, pain-frequency, pain-status, functional-goal (+ reason), reason
+
+**Recommendations:**
+recommendation, recommendation-audience, recommendation-category, recommendation-persona, recommendation-type
+
+**Activity stream:**
+activity-stream-action, activity-stream-feedback, activity-stream-progress
+
+**Surveys:**
+survey-template, survey-template-question, survey-template-question-option
+
+**Misc:**
+therapist, availability, frontend-translation, tag
+
+### API endpoints
+Strapi auto-generates REST per content type at `/api/{kebab-plural}`:
+- `/api/exercises`, `/api/joints`, `/api/omni-rom-programs`
+- `/api/recommendations`, `/api/frontend-translations`
+- `/api/survey-templates`
+- `/api/auth/*` (via `users-permissions` plugin)
+
+### Notable plugins
+- `@strapi/plugin-documentation` (Swagger)
+- `@strapi/plugin-users-permissions`
+- `strapi-cache`, `strapi-health-plugin`
+- `strapi-plugin-multi-select`, `strapi-plugin-oembed`
+- `@sklinet/strapi-plugin-video-field`
+- `strapi-provider-upload-azure-storage` (Azure Blob, NOT local disk)
+
+### Strapi vs carespace-admin (CRITICAL distinction)
+- **Strapi** owns: clinical reference content (exercise definitions, joints, recommendations, survey templates, diagnose codes). Read-mostly. Editable by content team.
+- **carespace-admin** owns: live operational data — patient records, scan results, sessions, assignments, billing, user/clinic management. References Strapi content by ID but isn't editable as CMS content.
+
+If an issue mentions exercise definitions, joint anatomy, recommendation catalogs, survey questions, or diagnose codes — fix it in Strapi, not carespace-admin or carespace-ui.
 
 ---
 
@@ -627,11 +716,12 @@ If an issue mentions clinical content (exercise definitions, survey questions, b
 ## carespace-sdk — ROM Assessment SDK
 
 **Repo:** carespace-ai/carespace-sdk
-**Stack:** Dart Flutter module monorepo (`packages/flutter`)
-**Purpose:** Embeddable SDK for ROM (Range of Motion) assessments using MediaPipe pose detection. Used by:
-- Flutter apps (direct widget)
-- Native iOS apps (Swift/UIKit via Flutter module)
-- Native Android apps (Kotlin via Flutter module)
+**Package:** `carespace_rom_sdk` v1.0.0 (single Flutter package, NOT a multi-package monorepo despite `packages/` dir)
+**Stack:** Dart / Flutter module SDK
+**Pose detection:** Google ML Kit (`google_mlkit_pose_detection ^0.11.0`), camera-only, no external hardware
+
+### Purpose
+AI-powered ROM (Range of Motion) assessments. Phase 1 = 8 exercises (Shoulder/Elbow/Hip/Knee Flexion, L+R).
 
 ### Phase 1 exercises (8 joints)
 | Joint | Sides | Normal Range |
@@ -644,11 +734,59 @@ If an issue mentions clinical content (exercise definitions, survey questions, b
 ### Requirements
 - iOS 15.6+
 - Android API 24 (Android 7.0)+
-- Flutter 3.10.0+
+- Flutter 3.10+
+- Dart 3.0+
+
+### Repo structure
+```
+lib/                    — root Flutter package (entry: lib/carespace_rom_sdk.dart)
+├── carespace_rom_sdk.dart   — package barrel
+├── main.dart                — example/dev entry
+└── src/
+    ├── rom_scan_widget.dart       — primary widget host apps mount
+    ├── carespace_sdk_widget.dart  — wrapper widget
+    ├── models/
+    ├── pose/
+    ├── screens/
+    └── services/
+packages/flutter/       — Flutter sub-package with own android/ios/lib/assets/example
+                          + ARCHITECTURE.md + gap-analysis doc
+android/                — native Android (Kotlin) host integration
+android_integration/    — Android integration guide
+ios/                    — native iOS (Swift/UIKit) host integration
+ios_integration/        — iOS integration guide
+example/, test/
+```
+
+### How clients consume it (NOT on pub.dev)
+
+Three integration paths:
+
+1. **Flutter app** — local path dep:
+   ```yaml
+   carespace_rom_sdk:
+     path: ../carespace-rom-sdk
+   ```
+   OR git ref:
+   ```yaml
+   carespace_rom_sdk:
+     git:
+       url: https://github.com/carespace-ai/carespace-rom-sdk.git
+       ref: v1.0.0
+   ```
+2. **Native iOS** — Flutter module embedded in Swift/UIKit
+3. **Native Android** — Flutter module embedded in Kotlin
+
+### Public API
+- `CareSpaceAuth.login(baseUrl, username, password, inviteCode)`
+- `RomScanWidget` — primary widget for ROM scanning UI
+
+### Key dependencies
+`google_mlkit_pose_detection ^0.11.0`, `camera ^0.10.5+9`, `dio ^5.4.0`, `permission_handler ^11.3.0`, `video_player ^2.8.0`, `audioplayers ^6.0.0`
 
 ### Docs
 - `README.md`, `INTEGRATION.md`, `QUICKSTART.md`, `DEVELOPER_GUIDE.md`, `SECURITY.md`
-- `android_integration/`, `ios_integration/` — platform-specific integration guides
+- `android_integration/`, `ios_integration/` — platform-specific guides
 
 ---
 
