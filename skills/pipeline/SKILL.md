@@ -101,7 +101,7 @@ ISSUE_JSON=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json title,body,labels,
 echo "$ISSUE_JSON"
 ```
 
-Download screenshots from the issue body (optional — for visual context):
+Download and optimize screenshots from the issue body for visual analysis:
 
 ```bash
 mkdir -p /tmp/pipeline-screenshots
@@ -110,23 +110,37 @@ IMG_URLS=$(echo "$ISSUE_BODY" | grep -oP 'https://[^\s\)\"]+\.(png|jpg|jpeg|gif|
 COUNT=0
 for url in $IMG_URLS; do
   COUNT=$((COUNT + 1))
-  curl -sL --max-time 10 "$url" -o "/tmp/pipeline-screenshots/issue-${COUNT}.png" 2>/dev/null
-  SIZE=$(stat -c%s "/tmp/pipeline-screenshots/issue-${COUNT}.png" 2>/dev/null || echo 0)
-  echo "Downloaded: issue-${COUNT}.png (${SIZE} bytes)"
-  # Skip images larger than 100KB — they slow down the API significantly
-  if [ "$SIZE" -gt 102400 ]; then
-    echo "SKIP: image too large for inline viewing (${SIZE} bytes > 100KB)"
-    rm -f "/tmp/pipeline-screenshots/issue-${COUNT}.png"
+  ORIG="/tmp/pipeline-screenshots/orig-${COUNT}.png"
+  FINAL="/tmp/pipeline-screenshots/issue-${COUNT}.png"
+  curl -sL --max-time 15 "$url" -o "$ORIG" 2>/dev/null
+  if [ -f "$ORIG" ] && [ -s "$ORIG" ]; then
+    # Resize to max 800px wide, compress to ~20-30KB for fast API processing
+    python3 -c "
+from PIL import Image
+img = Image.open('$ORIG')
+if img.width > 800:
+    ratio = 800 / img.width
+    img = img.resize((800, int(img.height * ratio)), Image.LANCZOS)
+img.save('$FINAL', 'PNG', optimize=True)
+" 2>/dev/null && rm -f "$ORIG" || mv "$ORIG" "$FINAL"
+    SIZE=$(stat -c%s "$FINAL" 2>/dev/null || echo 0)
+    echo "Screenshot ready: issue-${COUNT}.png (${SIZE} bytes)"
+  else
+    echo "Failed to download: $url"
+    rm -f "$ORIG"
   fi
 done
 [ "$COUNT" -eq 0 ] && echo "No screenshots in issue body"
 ```
 
-**Screenshots are OPTIONAL.** If small screenshots (< 100KB) were downloaded,
-you MAY view them with the Read tool for visual context. But do NOT block on
-this — if any image fails to load or is too large, continue without it.
-The issue text description has all the information you need to fix the bug.
-Screenshots are bonus context, not required.
+**View screenshots with the Read tool** to understand the visual context:
+```
+Read tool → file_path: /tmp/pipeline-screenshots/issue-1.png
+```
+Screenshots are resized to ~30KB so the API processes them quickly.
+You can see UI bugs, layout issues, font sizes, colors — the same visual
+information the human reporter attached. Always view available screenshots
+before starting the fix.
 
 ### Configure git for the cloned repo
 
