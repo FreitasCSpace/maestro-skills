@@ -914,9 +914,30 @@ be changed). Large CSS, config, and data files WILL fail with "File content
 exceeds maximum allowed tokens". When this happens, **DO NOT give up or skip
 the file.**
 
-### Step 1: Run code-map to get the file structure
+### Preferred: Use Serena MCP tools (if available)
 
-Before reading any file over 200 lines, run the structure map first:
+Serena provides symbol-level code reading and editing via LSP. Check if
+Serena tools are available by searching your tools for "serena". If available:
+
+- **`get_symbols_overview`** — get all symbols in a file (functions, classes,
+  CSS selectors) with their line ranges. Like code-map but LSP-powered.
+- **`find_symbol`** — find a specific function/class/variable by name across
+  the project. Returns its full source code.
+- **`replace_symbol_body`** — edit a function/class by name, not by string
+  matching. Works on any file size — no Edit tool uniqueness issues.
+- **`find_referencing_symbols`** — find all callers/importers of a symbol.
+- **`rename_symbol`** — rename across all references (LSP refactoring).
+
+Example for the font-size issue:
+1. `find_symbol` → search for `font-size-base` → get its declaration + value
+2. `replace_symbol_body` → change the value from `1.125rem` to `1.25rem`
+
+**Serena eliminates both the Read token limit AND the Edit uniqueness problem.**
+Always prefer Serena tools over raw Read/Edit when working with large files.
+
+### Fallback: code-map + offset/limit (if Serena unavailable)
+
+If Serena is not available, use the code-map script:
 
 ```bash
 bash ~/.claude/skills/pipeline/code-map.sh path/to/file.tsx
@@ -924,8 +945,6 @@ bash ~/.claude/skills/pipeline/code-map.sh path/to/file.tsx
 
 This outputs a table of contents with line numbers — functions, classes,
 CSS selectors, exports. You can then read ONLY the section you need.
-
-### Step 2: Read the specific section
 
 Use one of these approaches to read just what you need:
 
