@@ -129,6 +129,196 @@ So issue attachments use **`raw.githubusercontent.com`** (publicly accessible, n
 
 ---
 
+## Architecture Diagram
+
+How all CareSpace repos connect to deliver the final product:
+
+```mermaid
+graph TB
+    %% ─── Users ───
+    Patient([👤 Patient])
+    Clinician([👨‍⚕️ Clinician])
+    Admin([👔 SuperAdmin])
+    Inmate([👤 Inmate])
+
+    %% ─── Client apps ───
+    subgraph Clients["Client Applications"]
+        UI[carespace-ui<br/>React + TS<br/>Web App]
+        AndroidApp[carespace-mobile-android<br/>Native Kotlin]
+        IOSApp[carespace-mobile-ios<br/>Native Swift]
+        FlutterApp[carespace_mobile<br/>Legacy Flutter]
+        Kiosk[carespace-kiosk<br/>Flutter + Riverpod]
+    end
+
+    %% ─── Embedded SDK ───
+    subgraph SDK["Embeddable SDK"]
+        SDKPkg[carespace-sdk<br/>Flutter Package<br/>+ Google ML Kit]
+    end
+
+    %% ─── Backend services ───
+    subgraph Backend["Backend Services"]
+        Admin_API[carespace-admin<br/>NestJS 11<br/>Main API + Auth]
+        Posture[carespace-posture-engine<br/>NestJS + MoveNet<br/>Plumb-line]
+        Body3D[carespace-3d-body-service<br/>FastAPI + SAM-3D<br/>3D Mesh]
+        Strapi[carespace-strapi<br/>Strapi 5 CMS<br/>Reference Content]
+    end
+
+    %% ─── Data + infra ───
+    subgraph Data["Data & Infra"]
+        Postgres[(PostgreSQL<br/>via Prisma)]
+        MySQL[(MySQL<br/>Strapi)]
+        Blob[(Azure Blob<br/>PHI Files)]
+        ServiceBus[Azure Service Bus<br/>Async Queue]
+        FusionAuth[FusionAuth<br/>IdP / SSO]
+        KeyVault[Azure Key Vault<br/>Secrets]
+    end
+
+    %% ─── Tooling / ops ───
+    subgraph Tooling["Tooling & Ops"]
+        BugTracker[carespace-bug-tracker<br/>Next.js<br/>Auto Issue Bot]
+        Maestro[Maestro<br/>Pipeline Orchestrator]
+        ClickUp[ClickUp<br/>Task Mirror]
+        Slack[Slack<br/>Alerts]
+    end
+
+    %% ─── User flows ───
+    Patient -->|web sessions| UI
+    Patient -->|exercise programs| AndroidApp
+    Patient -->|exercise programs| IOSApp
+    Inmate -->|kiosk check-in| Kiosk
+    Clinician -->|patient triage<br/>posture review| UI
+    Admin -->|admin dashboard| UI
+
+    %% ─── Frontend ↔ backend ───
+    UI -->|REST + RTK Query| Admin_API
+    UI -->|reference content| Strapi
+    UI -->|on-device pose<br/>TensorFlow.js + MediaPipe| UI
+
+    AndroidApp -->|REST| Admin_API
+    AndroidApp -.->|embeds| SDKPkg
+    IOSApp -->|REST| Admin_API
+    IOSApp -.->|embeds| SDKPkg
+    FlutterApp -->|REST| Admin_API
+    FlutterApp -.->|embeds| SDKPkg
+    Kiosk -->|REST| Admin_API
+    Kiosk -.->|embeds| SDKPkg
+
+    %% ─── Backend ↔ services ───
+    Admin_API -->|reads schemas| Postgres
+    Admin_API -->|stores PHI files| Blob
+    Admin_API -->|queue posture jobs| ServiceBus
+    Admin_API -->|auth via JWT| FusionAuth
+    Admin_API -->|secrets at boot| KeyVault
+    Admin_API -->|reads content| Strapi
+    Admin_API -.->|HTTP call for 3D| Body3D
+
+    ServiceBus -->|consumes assessment msgs| Posture
+    Posture -->|stores results| ServiceBus
+    ServiceBus -->|results back| Admin_API
+
+    Posture -->|fetch images| Blob
+    Body3D -->|loads SAM-3D model| Body3D
+
+    Strapi -->|stores content| MySQL
+    Strapi -->|media uploads| Blob
+
+    %% ─── Bug flow ───
+    Patient -.->|reports bug| BugTracker
+    Clinician -.->|reports bug| BugTracker
+    BugTracker -->|Claude Opus 4.5<br/>+ codebase context| BugTracker
+    BugTracker -->|creates issue| GH[GitHub Repos]
+    BugTracker -->|mirror task| ClickUp
+    BugTracker -->|webhook HMAC| Slack
+
+    %% ─── Pipeline flow ───
+    GH -->|labeled pipeline| Maestro
+    Maestro -->|/pipeline skill<br/>via Claude Code CLI| Maestro
+    Maestro -->|opens PR → develop| GH
+
+    classDef client fill:#1e3a5f,stroke:#3b82f6,color:#fff
+    classDef backend fill:#7c2d12,stroke:#ea580c,color:#fff
+    classDef data fill:#14532d,stroke:#22c55e,color:#fff
+    classDef tooling fill:#3f1d5e,stroke:#a855f7,color:#fff
+    classDef sdk fill:#713f12,stroke:#eab308,color:#fff
+
+    class UI,AndroidApp,IOSApp,FlutterApp,Kiosk client
+    class Admin_API,Posture,Body3D,Strapi backend
+    class Postgres,MySQL,Blob,ServiceBus,FusionAuth,KeyVault data
+    class BugTracker,Maestro,ClickUp,Slack tooling
+    class SDKPkg sdk
+```
+
+### How a typical request flows
+
+**Clinician triages a new patient (carespace-ui → carespace-admin):**
+```
+Browser → Nginx → carespace-ui (CRACO build)
+  → Redux RTK Query → carespace-admin /v1/client/...
+    → AuthMiddleware (FusionAuth JWT)
+    → ContextMiddleware (tenant/user)
+    → ClientController.findAll()
+    → Prisma → PostgreSQL
+    → ResponseEnvelopeInterceptor wraps response
+  → RTK Query updates Redux store
+  → React re-renders patient list
+```
+
+**Patient takes a posture scan (carespace-ui → posture-engine):**
+```
+Browser camera → MediaPipe in carespace-ui (on-device pose extraction)
+  → carespace-ui uploads 4-view images to Azure Blob via carespace-admin
+  → carespace-admin queues "assessment" message on Azure Service Bus
+    → carespace-posture-engine ConsumerService picks it up
+    → ImageProcessorService fetches images (URL allowlist)
+    → MoveNet extracts COCO-17 keypoints
+    → PlumblineExtractorService → CalculationService
+    → classifyAllSegments / classifyAllFrontalSegments
+    → lookupPermutation (243-entry / 729-entry tables)
+    → ProducerService publishes result back to Service Bus
+  → carespace-admin consumer stores result via Prisma
+  → WebSocket notifies carespace-ui
+  → Posture report renders
+```
+
+**Patient runs ROM scan on mobile (mobile app → SDK → admin):**
+```
+User taps "Start Scan" in carespace-mobile-android
+  → embedded carespace-sdk RomScanWidget opens camera
+  → google_mlkit_pose_detection extracts pose per frame
+  → SDK calculates joint angles (Shoulder/Elbow/Hip/Knee, L+R)
+  → SDK posts session to carespace-admin /v1/rom/...
+    → Prisma writes RomSession + joint angles
+    → Returns mobilityScore
+  → SDK shows clinical report
+```
+
+**Clinical content lookup (carespace-ui → Strapi):**
+```
+carespace-ui needs exercise definitions
+  → axios call to Strapi /api/exercises?populate=*
+  → Strapi reads MySQL → returns JSON with related content
+  → Tailwind/Antd render exercise cards
+```
+
+**Bug reported by user (bug-tracker → GitHub → Maestro pipeline):**
+```
+User clicks "Report Bug" (chrome-extension or web form)
+  → carespace-bug-tracker /api/submit-bug
+    → prompt-sanitizer strips PII
+    → llm-service calls Claude Opus 4.5 with codebase-context.json
+    → Claude returns EnhancedBugReport (target repo, claudePrompt, etc)
+  → github-service creates issue in target repo
+  → clickup-service creates linked task
+  → outgoing webhooks fire (Slack, dashboards)
+  → If labeled "pipeline" → Maestro auto-triggers
+    → /pipeline skill clones the repo
+    → Reads CARESPACE_CONTEXT.md (this file)
+    → Runs investigate → think → plan → build → review → security → qa → ship
+    → Opens PR to develop
+```
+
+---
+
 ## carespace-ui — Web Application (Frontend)
 
 **Repo:** carespace-ai/carespace-ui
