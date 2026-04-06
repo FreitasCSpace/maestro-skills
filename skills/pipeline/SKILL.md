@@ -597,6 +597,51 @@ If you discover you need to change additional files, add them to the list first.
 search for patterns, imports, or usage of functions you're modifying. This
 keeps your main context clean while getting the information you need.
 
+### Safe Editing Strategy (CRITICAL for large files)
+
+The Edit tool can fail and loop when `old_string` isn't unique in a large file.
+This causes the session to spiral and freeze. Follow these rules:
+
+**Before editing ANY file, check its size:**
+
+```bash
+wc -l path/to/file.tsx
+```
+
+**Choose your editing approach based on file size:**
+
+1. **Small files (< 200 lines):** Use the Edit tool normally. The `old_string`
+   is likely unique.
+
+2. **Medium files (200-500 lines):** Use the Edit tool but include MORE context
+   in `old_string` — at least 5-10 lines of surrounding code to ensure uniqueness.
+   If the Edit fails with "not unique", immediately switch to approach 3.
+
+3. **Large files (500+ lines):** Do NOT use the Edit tool. Instead:
+   - **Option A — Write tool:** Read the full file, make your changes in memory,
+     then use the Write tool to write the entire modified file. This always works
+     regardless of file size.
+   - **Option B — New file extraction:** If you're adding a new component or
+     section, create it as a NEW file and import it. This is often the cleanest
+     approach for features.
+   - **Option C — Targeted sed via Bash:** For surgical single-line changes,
+     use sed with line numbers:
+     ```bash
+     # Find the exact line number first
+     grep -n "the exact string" path/to/file.tsx
+     # Then replace by line number
+     sed -i '42s/old text/new text/' path/to/file.tsx
+     ```
+
+**NEVER retry a failed Edit more than once.** If the Edit tool errors with
+"old_string is not unique" or similar, immediately switch to Write or sed.
+Do not try to adjust the old_string — that path leads to infinite loops.
+
+**When creating new components:** Always prefer creating a NEW file over
+modifying an existing large file. For example, if adding a dashboard widget,
+create `src/components/DashboardWidget.tsx` and import it, rather than adding
+200 lines to an existing 800-line file.
+
 Run tests using the command from CLAUDE.md:
 
 ```bash
