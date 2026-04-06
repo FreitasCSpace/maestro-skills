@@ -260,86 +260,167 @@ ADMIN_SDK_API_KEYS: '/admin/sdk/api-keys'
 ## carespace-admin — Backend API
 
 **Repo:** carespace-ai/carespace-admin
-**Stack:** NestJS 11, Prisma + PostgreSQL, FusionAuth (auth), Express, Socket.IO, Swagger
+**Package name:** `carespace-backend` (despite repo name)
+**Stack:** NestJS 11, TypeScript, Prisma 6 (PostgreSQL), FusionAuth, Azure (Key Vault, Blob Storage, Service Bus, Communication Email), Pino, New Relic, Swagger
+**AI:** LangChain + OpenAI (in `lets-move/openai/`)
+**Misc:** Puppeteer (PDF), Sharp (images), ExcelJS, socket.io
 
 ### Commands
 ```bash
 npm install
-npm run build              # nest build
-npm run start              # NODE_ENV=localhost
-npm run start:dev          # nest start --watch
-npm run start:prod         # runs migrations then node dist/main
-npm run lint               # eslint --fix
-npm test                   # jest
-npm run test:unit          # excludes e2e
+npm run build                  # nest build
+npm run start                  # NODE_ENV=localhost
+npm run start:dev              # nest start --watch
+npm run start:prod             # prisma migrate deploy then node dist/main
+npm run lint                   # eslint --fix
+npm test                       # jest
+npm run test:unit              # excludes e2e
+npm run test:e2e
+npm run test:cov               # coverage
+npm run validate               # full gate (lint + tests)
 ```
 
-### Modules (one folder per feature in `src/`)
+### Architecture — modular monolith
+
+`src/main.ts` global setup:
+- **URI versioning:** `/v1` default, `/v2` opt-in
+- **Legacy rewrites:** unprefixed routes → `/v1/*` with Deprecation/Sunset headers (sunset 2026-03-31)
+- **Global ValidationPipe** (whitelist + forbidNonWhitelisted + transform)
+- **Global filters:** `GlobalExceptionFilter` + `PrismaClientExceptionFilter`
+- **Global interceptors:** `ResponseEnvelopeInterceptor` (v1 unwraps `data`, v2 keeps envelope) + Pino `LoggerErrorInterceptor`
+- **Global guards:** `ApiKeyGuard` (service-to-service) + `RolesGuard` (RBAC)
+- **CORS:** `origin: '*'` ⚠️ **flag for prod review**
+- **Body limit:** 50mb JSON
+- **Swagger:** at `/doc` (dev only)
+
+`src/app.module.ts`:
+- Global Config, Schedule, Cache, Throttler (short=20/s, medium=100/10s)
+- nestjs-pino with OpenTelemetry trace correlation
+- **Middleware chain:** `AuthMiddleware` → `ContextMiddleware` → `ClientMiddleware` → `UserMiddleware`
+
+**Path aliases:** `@auth`, `@user`, `@client`, `@evaluation`, `@rom`, `@activitystream`, `@lets-move`, `@settings`, `@common`, `@services`, etc.
+
+### Feature modules (`src/`)
 
 ```
-src/
-├── activitystream/       — patient activity feed
-├── admin-group/          — clinic groups + permissions
-├── auditReports/         — HIPAA audit logs
-├── auth/                 — login, sessions
-├── bodyComposition/      — body comp measurements
-├── calendar-program/     — exercise programs on calendar
-├── calendar-tasks/       — patient tasks
-├── client/               — patient management
-├── common/               — shared utilities
-├── context/              — request context (user, org)
-├── dataRetention/        — HIPAA data retention rules
-├── dto/                  — Prisma-generated DTOs
-├── evaluation/           — clinical evaluations
-├── fusionauth/           — FusionAuth integration
-├── healthcheck/          — health endpoints
-├── lets-move/            — LetsMove sessions
-├── metrics/              — analytics
-├── migration/            — data migration scripts
-├── plans/                — subscription plans
-├── poseEstimation/       — pose endpoint
-├── postureAnalytics/     — posture session analytics
-├── reports/              — report generation
-├── rom/                  — Range of Motion assessments
-├── romTemplate/          — ROM templates
-├── scheduled-activity/   — cron jobs
-├── services/             — shared services
-├── settings/             — user/org settings
-├── stats/                — statistics
-├── storage/              — Azure Blob storage (PHI)
-├── survey/               — survey responses
-├── user/                 — user management
-├── vr/                   — VR session integration
-├── webhook/              — outbound webhooks
-└── main.ts               — app entry
+auth (+fusionauth)              — FusionAuth-backed auth + JWT (jsonwebtoken + jwks-rsa)
+user (+userActivity)            — user/profile management
+client                          — patient management (PHI)
+evaluation                      — clinical evaluations
+  ├── healthSign
+  ├── medicalHistory
+  └── painAssessment
+rom                             — Range of Motion assessments
+  ├── mobilityScore
+  └── mobilityReport
+postureAnalytics                — posture session analytics + mobilityReport
+poseEstimation                  — pose endpoint
+bodyComposition                 — body comp measurements
+lets-move                       — exercise programs ("LetsMove" sessions)
+  ├── template
+  └── openai                    — LangChain + OpenAI integration
+romTemplate                     — ROM templates
+survey (+template)              — survey responses + templates
+activitystream                  — patient activity feed
+  ├── History
+  ├── Evaluation
+  ├── Feedback
+  └── Post
+calendar-program                — exercise programs on calendar
+scheduled-activity              — cron jobs
+calendar-tasks                  — patient tasks
+plans                           — subscription plans
+settings                        — user/org settings
+  ├── consentPolicy
+  ├── plansSettings
+  ├── functionalGoalsSettings
+  └── preExistingConditionsSettings
+admin-group                     — clinic groups + permissions
+vr                              — VR session integration
+reports                         — report generation
+auditReports                    — HIPAA audit logs
+stats                           — statistics
+metrics                         — analytics
+storage                         — Azure Blob storage (PHI files)
+webhook                         — outbound webhooks
+migration                       — data migration scripts
+dataRetention                   — HIPAA data retention rules
+healthcheck                     — health endpoints
+common                          — shared utilities
+services                        — cross-cutting (KeyVaultService, etc)
+context                         — request context (user, org, client tenant)
+dto                             — Prisma-generated DTOs (auto, do not edit by hand)
 ```
 
-### Database — Prisma
+### Database — Prisma 6 with split schema
 
-- Schema: `prisma/schema.prisma`
-- Generator: `prisma-generator-nestjs-dto` outputs to `src/dto/`
-- DB: PostgreSQL
-- DTOs are auto-generated — modifying them by hand will be overwritten on next `prisma generate`
+- Main schema: `prisma/schema.prisma`
+- Per-domain models: `prisma/models/*.prisma`
+  - `user.prisma` — `User`, `Profile` (PHI: email, name, phone, birthDate, gender, isPregnant, height/weight, languages, consent), `UserRole` enum (`superadmin | admin | user`)
+  - `client.prisma` — patient records (tenant scope)
+  - `evaluation.prisma` — clinical evaluations + sub-records
+  - `rom.prisma`, `mobilityscore.prisma`, `postureanalytics.prisma`, `poseestimation.prisma`
+  - `bodycomposition.prisma`, `performance.prisma`, `functionalgoals.prisma`, `preexistingconditions.prisma`
+  - `activitystream.prisma`, `letsmove.prisma`, `plans.prisma`, `survey.prisma`, `calendar.prisma`
+  - `vr.prisma`, `reports.prisma`, `stats.prisma`, `settings.prisma`, `adminGroup.prisma`
+  - `storageAccessAudit.prisma` — Azure Blob access audit (HIPAA)
+  - `migrations.prisma` — internal migration tracking
 
-### Auth & PHI
+**Generators:**
+- `@prisma/client`
+- `@brakebein/prisma-generator-nestjs-dto` (outputs to `src/dto/`)
+- `zod-prisma-types`
+- `prisma-docs-generator`
 
-- **FusionAuth** for SSO/login (OAuth flows in `src/fusionauth/`)
-- **NEVER log PHI** (patient data, names, DOB, medical records). Use audit log via `auditReports/` module
-- **Storage** for PHI files goes through `src/storage/` (Azure Blob, encrypted)
-- HIPAA §164.312 audit logging is mandatory for PHI mutations
+**Pagination:** `prisma-extension-pagination`
+**Seed:** `prisma/seed.ts`
+
+### Auth pattern
+
+- **IdP:** FusionAuth (`@fusionauth/typescript-client`, `src/fusionauth/`)
+- **JWT:** validated via `jsonwebtoken` + `jwks-rsa`
+- **Global guards:** `ApiKeyGuard` (service-to-service) + `RolesGuard` (RBAC: `superadmin | admin | user`)
+- **Public routes** opt out via `@Public` decorator (search in `src/auth/`)
+- **Passport:** wired via `@nestjs/passport`
+- **Throttling:** global ThrottlerModule (20/s short, 100/10s medium)
+
+### HIPAA / PHI handling
+
+**PHI lives in:** `Profile`, `Client`, `Evaluation*`, `BodyComposition`, `Performance`, `MobilityScore`, `PoseEstimation`, `PostureAnalytics`, `Survey`, `ActivityStream*`, `Reports`
+
+**Critical rules:**
+- **Secrets:** Azure Key Vault loaded at boot via `KeyVaultService`. Required env via `ConfigService.getOrThrow`. See `docs/env.example.md`
+- **Storage audit:** every Azure Blob access tracked in `prisma/models/storageAccessAudit.prisma`
+- **Audit reports:** dedicated module at `src/auditReports/`
+- **Data retention:** `src/dataRetention/` (likely scheduled deletion)
+- **Consent:** `Profile.consentPolicyRead` / `consentPolicyAcceptedAt` + `src/settings/consentPolicy/`
+- **⚠️ Logging concern:** Pino `customSuccessMessage`/`customErrorMessage` in `app.module.ts` log `req.url` + `req.headers.referer` — **PHI in query strings would leak to logs**
+- **⚠️ CORS wide open** (`origin: '*'`) — flag for prod review
+- **Compliance infra:** New Relic APM, Azure Service Bus (async), Azure Communication Email, OpenTelemetry trace IDs
 
 ### Where to look by issue type
 
 | Issue type | Look in |
 |-----------|---------|
-| API endpoint bug | `src/{module}/{module}.controller.ts` |
-| Business logic | `src/{module}/{module}.service.ts` |
-| Database schema | `prisma/schema.prisma` |
-| Auth bug | `src/auth/`, `src/fusionauth/` |
-| Storage bug | `src/storage/` |
-| Audit log | `src/auditReports/` |
-| Cron / scheduled | `src/scheduled-activity/` |
-| Webhook bug | `src/webhook/` |
+| Auth/login bugs | `src/auth/`, `src/fusionauth/` |
+| Roles / permissions | `src/auth/guards/roles.guard.ts`, `ApiKeyGuard` |
+| Patient (client) data | `src/client/` + `prisma/models/client.prisma` |
+| User/profile (PHI) | `src/user/` + `prisma/models/user.prisma` |
+| Clinical evaluations | `src/evaluation/` (+ healthSign/medicalHistory/painAssessment) + `prisma/models/evaluation.prisma` |
+| API endpoint bugs | `src/<feature>/<feature>.controller.ts` (global behavior in `src/main.ts`) |
+| Validation / DTOs | `src/<feature>/dto/*` (class-validator + class-transformer); `src/common/validation/ValidateParamsId.pipe.ts` |
+| Response shape / envelope | `src/common/http/responseEnvelope.interceptor.ts` (`convertToLegacyV1` in `main.ts`) |
+| Error handling | `src/common/errors/` (`GlobalExceptionFilter`, `PrismaClientExceptionFilter`) |
+| Database queries / Prisma | `src/<feature>/<feature>.service.ts`; schema in `prisma/schema.prisma` + `prisma/models/*.prisma`; migrations in `prisma/migrations/` |
+| Business logic | `src/<feature>/<feature>.service.ts`; cross-cutting in `src/services/` |
+| HIPAA / audit / PHI access | `src/auditReports/`, `src/dataRetention/`, `src/storage/` + `prisma/models/storageAccessAudit.prisma` |
+| Scheduled jobs / cron | search `@Cron`; `src/calendar-program/`, `src/scheduled-activity/`, `src/calendar-tasks/`, `src/dataRetention/` |
+| Webhooks | `src/webhook/` |
+| AI / OpenAI / LangChain | `src/lets-move/openai/` |
+| Config / secrets / Key Vault | `src/services/` (search `KeyVaultService`); `docs/env.example.md` |
+| Throttling / rate-limit | `src/app.module.ts` (`ThrottlerModule.forRoot`) |
+| CORS / security headers | `src/main.ts` (currently `origin: '*'`) |
+| Logging leaks (PHI in URLs) | Pino custom log messages in `src/app.module.ts` |
 
 ---
 
