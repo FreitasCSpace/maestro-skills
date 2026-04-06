@@ -61,19 +61,21 @@ COUNT=0
 for url in $IMG_URLS; do
   COUNT=$((COUNT + 1))
   ORIG="/tmp/pipeline-screenshots/orig-${COUNT}.png"
-  FINAL="/tmp/pipeline-screenshots/issue-${COUNT}.png"
+  FINAL="/tmp/pipeline-screenshots/issue-${COUNT}.jpg"
   curl -sL --max-time 15 "$url" -o "$ORIG" 2>/dev/null
   if [ -f "$ORIG" ] && [ -s "$ORIG" ]; then
+    # Aggressive resize + JPEG compression: 400px wide, quality 40 → ~8-15KB
+    # Small enough for the API to process instantly via Read tool
     python3 -c "
 from PIL import Image
-img = Image.open('$ORIG')
-if img.width > 800:
-    ratio = 800 / img.width
-    img = img.resize((800, int(img.height * ratio)), Image.LANCZOS)
-img.save('$FINAL', 'PNG', optimize=True)
+img = Image.open('$ORIG').convert('RGB')
+if img.width > 400:
+    ratio = 400 / img.width
+    img = img.resize((400, int(img.height * ratio)), Image.LANCZOS)
+img.save('$FINAL', 'JPEG', quality=40, optimize=True)
 " 2>/dev/null && rm -f "$ORIG" || mv "$ORIG" "$FINAL"
     SIZE=$(stat -c%s "$FINAL" 2>/dev/null || echo 0)
-    echo "Screenshot ready: issue-${COUNT}.png (${SIZE} bytes)"
+    echo "Screenshot ready: issue-${COUNT}.jpg (${SIZE} bytes)"
   else
     rm -f "$ORIG"
   fi
@@ -83,7 +85,7 @@ done
 
 If screenshots were downloaded, view them with the Read tool:
 ```
-Read tool → file_path: /tmp/pipeline-screenshots/issue-1.png
+Read tool → file_path: /tmp/pipeline-screenshots/issue-1.jpg
 ```
 
 ## Configure git
