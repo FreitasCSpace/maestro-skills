@@ -101,7 +101,7 @@ ISSUE_JSON=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json title,body,labels,
 echo "$ISSUE_JSON"
 ```
 
-Download screenshots from the issue body so you can view them with the Read tool:
+Download screenshots from the issue body (optional — for visual context):
 
 ```bash
 mkdir -p /tmp/pipeline-screenshots
@@ -110,15 +110,23 @@ IMG_URLS=$(echo "$ISSUE_BODY" | grep -oP 'https://[^\s\)\"]+\.(png|jpg|jpeg|gif|
 COUNT=0
 for url in $IMG_URLS; do
   COUNT=$((COUNT + 1))
-  curl -sL "$url" -o "/tmp/pipeline-screenshots/issue-${COUNT}.png" 2>/dev/null
-  echo "Downloaded: /tmp/pipeline-screenshots/issue-${COUNT}.png"
+  curl -sL --max-time 10 "$url" -o "/tmp/pipeline-screenshots/issue-${COUNT}.png" 2>/dev/null
+  SIZE=$(stat -c%s "/tmp/pipeline-screenshots/issue-${COUNT}.png" 2>/dev/null || echo 0)
+  echo "Downloaded: issue-${COUNT}.png (${SIZE} bytes)"
+  # Skip images larger than 100KB — they slow down the API significantly
+  if [ "$SIZE" -gt 102400 ]; then
+    echo "SKIP: image too large for inline viewing (${SIZE} bytes > 100KB)"
+    rm -f "/tmp/pipeline-screenshots/issue-${COUNT}.png"
+  fi
 done
 [ "$COUNT" -eq 0 ] && echo "No screenshots in issue body"
 ```
 
-If screenshots were downloaded, view them using the Read tool to understand
-the visual context of the issue. Read each file at `/tmp/pipeline-screenshots/`.
-This gives you the same visual information the human reporter attached.
+**Screenshots are OPTIONAL.** If small screenshots (< 100KB) were downloaded,
+you MAY view them with the Read tool for visual context. But do NOT block on
+this — if any image fails to load or is too large, continue without it.
+The issue text description has all the information you need to fix the bug.
+Screenshots are bonus context, not required.
 
 ### Configure git for the cloned repo
 
