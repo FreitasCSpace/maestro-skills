@@ -301,7 +301,7 @@ git push -u origin HEAD
 **Read the gstack investigate skill and follow its methodology:**
 
 ```bash
-cat ~/.claude/skills/gstack/investigate/SKILL.md
+head -100 ~/.claude/skills/gstack/investigate/SKILL.md
 ```
 
 Follow every step in that SKILL.md to investigate the issue. Apply the Iron Law:
@@ -319,7 +319,7 @@ git add PIPELINE.md && git commit -m "pipeline: investigate" && git push
 **Read the gstack office-hours skill and follow its methodology:**
 
 ```bash
-cat ~/.claude/skills/gstack/office-hours/SKILL.md
+head -100 ~/.claude/skills/gstack/office-hours/SKILL.md
 ```
 
 Follow the six forcing questions. Write a design document. Append `## Think`
@@ -336,7 +336,7 @@ git add PIPELINE.md && git commit -m "pipeline: think" && git push
 **Read the gstack plan-eng-review skill and follow its methodology:**
 
 ```bash
-cat ~/.claude/skills/gstack/plan-eng-review/SKILL.md
+head -100 ~/.claude/skills/gstack/plan-eng-review/SKILL.md
 ```
 
 Lock in architecture, data flow, edge cases, test plan. Append `## Plan`
@@ -437,7 +437,7 @@ Append `## Build` to PIPELINE.md with files changed and test results.
 **Read the gstack review skill and follow its FULL methodology:**
 
 ```bash
-cat ~/.claude/skills/gstack/review/SKILL.md
+head -100 ~/.claude/skills/gstack/review/SKILL.md
 ```
 
 Follow every step — the checklist, the completeness checks, the regression
@@ -462,7 +462,7 @@ git add -A PIPELINE.md && git commit -m "pipeline: review" && git push
 **Read the gstack cso skill and follow its FULL methodology:**
 
 ```bash
-cat ~/.claude/skills/gstack/cso/SKILL.md
+head -100 ~/.claude/skills/gstack/cso/SKILL.md
 ```
 
 Follow the complete OWASP Top 10 + STRIDE audit. Apply the confidence gate
@@ -484,7 +484,7 @@ git add -A PIPELINE.md && git commit -m "pipeline: security" && git push
 **Read the gstack qa skill and follow its methodology:**
 
 ```bash
-cat ~/.claude/skills/gstack/qa/SKILL.md
+head -100 ~/.claude/skills/gstack/qa/SKILL.md
 ```
 
 Run automated tests first (same detection as Phase 4).
@@ -511,7 +511,7 @@ git add -A PIPELINE.md && git commit -m "pipeline: qa" && git push
 **Read the gstack ship skill and follow its methodology:**
 
 ```bash
-cat ~/.claude/skills/gstack/ship/SKILL.md
+head -100 ~/.claude/skills/gstack/ship/SKILL.md
 ```
 
 ### Create PR
