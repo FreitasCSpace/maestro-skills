@@ -20,12 +20,23 @@ done. This is a BRAND NEW task. Ignore everything in the current directory.
 Your very first action must be to read the task input and clone a fresh repo.
 NEVER say "already completed" — every run is a new task.
 
-**NEVER fetch binary files.** Do NOT use WebFetch on URLs ending in `.png`,
-`.jpg`, `.jpeg`, `.gif`, `.svg`, `.pdf`, `.zip`, or any image/binary URL.
-GitHub issue screenshots are for human reference — you cannot parse them.
-If an issue links to a screenshot, read the issue TEXT description only and
-ignore the image URLs. Fetching binary data will flood your context with
-garbage and break the session.
+**NEVER use WebFetch on image/binary URLs.** WebFetch dumps raw binary data
+into your context and will break the session. Instead, to view screenshots
+and images from GitHub issues, **download them to a file and use the Read tool:**
+
+```bash
+# Download issue screenshots to local files
+mkdir -p /tmp/pipeline-screenshots
+curl -sL "THE_IMAGE_URL" -o /tmp/pipeline-screenshots/screenshot-1.png
+```
+
+Then use the Read tool to view the image:
+```
+Read tool → file_path: /tmp/pipeline-screenshots/screenshot-1.png
+```
+
+The Read tool displays images visually — you can see and analyze screenshots,
+UI mockups, and error captures. Always download first, never WebFetch directly.
 
 ---
 
@@ -82,12 +93,32 @@ rm -f PIPELINE.md 2>/dev/null
 **IMPORTANT:** You MUST work in `/tmp/pipeline-work` for the entire run.
 ALL subsequent bash commands must run in this directory.
 
-Now fetch the issue details:
+Now fetch the issue details and download any attached screenshots:
 
 ```bash
 ISSUE_NUM=$(echo "$TASK" | grep -oP 'issues/\K\d+')
-gh issue view "$ISSUE_NUM" --repo "$REPO" --json title,body,labels,state
+ISSUE_JSON=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json title,body,labels,state)
+echo "$ISSUE_JSON"
 ```
+
+Download screenshots from the issue body so you can view them with the Read tool:
+
+```bash
+mkdir -p /tmp/pipeline-screenshots
+ISSUE_BODY=$(echo "$ISSUE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('body',''))")
+IMG_URLS=$(echo "$ISSUE_BODY" | grep -oP 'https://[^\s\)\"]+\.(png|jpg|jpeg|gif|webp)' | head -5)
+COUNT=0
+for url in $IMG_URLS; do
+  COUNT=$((COUNT + 1))
+  curl -sL "$url" -o "/tmp/pipeline-screenshots/issue-${COUNT}.png" 2>/dev/null
+  echo "Downloaded: /tmp/pipeline-screenshots/issue-${COUNT}.png"
+done
+[ "$COUNT" -eq 0 ] && echo "No screenshots in issue body"
+```
+
+If screenshots were downloaded, view them using the Read tool to understand
+the visual context of the issue. Read each file at `/tmp/pipeline-screenshots/`.
+This gives you the same visual information the human reporter attached.
 
 ### Configure git for the cloned repo
 
