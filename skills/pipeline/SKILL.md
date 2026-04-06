@@ -256,8 +256,8 @@ Determine: **feature**, **bug-fix**, **security-fix**, or **refactor**.
 
 ### Create pipeline branch from the default branch
 
-**CRITICAL:** Always branch from the repo's default branch (master/main/develop),
-never from an existing pipeline branch. Check which branch you're on.
+**CRITICAL:** Always branch from the repo's default branch (master/main),
+never from an existing pipeline branch. PRs will target `develop`.
 
 ```bash
 # Unshallow so diffs work properly
@@ -526,7 +526,10 @@ Follow the ship workflow: sync main, final test run, create PR with full
 pipeline report.
 
 ```bash
-BASE=$(git remote show origin | grep 'HEAD branch' | sed 's/.*: //')
+# PRs always target develop (not master/main) — code goes through develop first
+BASE="develop"
+# Verify develop branch exists, fall back to default if not
+git ls-remote --heads origin develop | grep -q develop || BASE=$(git remote show origin | grep 'HEAD branch' | sed 's/.*: //')
 gh pr create \
   --base "$BASE" \
   --title "$(sed -n '/^## Task/,/^## /p' PIPELINE.md | head -n -1 | tail -n +2 | head -1 | cut -c1-70)" \
