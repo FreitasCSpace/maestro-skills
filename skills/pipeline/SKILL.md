@@ -40,6 +40,30 @@ just file reads. ToolSearch is only for loading deferred tool schemas.
 
 ---
 
+## CareSpace Codebase Context (READ THIS FIRST)
+
+Before doing anything, read the CareSpace codebase context. It tells you which
+repo handles what, the architecture, conventions, and where to look for issues
+by type. This is the most efficient way to orient yourself.
+
+```bash
+cat ~/.claude/skills/pipeline/CARESPACE_CONTEXT.md
+```
+
+This file contains:
+- What CareSpace is (HIPAA healthcare platform)
+- All 11 active repos and their stacks
+- Bug tracker issue body format (Codebase Context, Claude Code Fix Instructions sections)
+- Frontend (carespace-ui) atomic design + path aliases + Redux slices + routes
+- Backend (carespace-admin) NestJS modules + Prisma + auth
+- Posture engine, 3D body service, Strapi CMS, mobile apps, SDK
+- "Where to look by issue type" tables for each repo
+- HIPAA / PHI / audit log requirements
+
+After reading, you'll know exactly which repo + folder to clone and focus on.
+
+---
+
 ## Step 0 — Setup
 
 ### Read task input
