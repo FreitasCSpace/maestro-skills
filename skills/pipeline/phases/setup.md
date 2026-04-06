@@ -60,20 +60,19 @@ IMG_URLS=$(echo "$ISSUE_BODY" | grep -oP 'https://[^\s\)\"]+\.(png|jpg|jpeg|gif|
 COUNT=0
 for url in $IMG_URLS; do
   COUNT=$((COUNT + 1))
-  ORIG="/tmp/pipeline-screenshots/orig-${COUNT}.png"
   FINAL="/tmp/pipeline-screenshots/issue-${COUNT}.jpg"
-  curl -sL --max-time 15 "$url" -o "$ORIG" 2>/dev/null
-  if [ -f "$ORIG" ] && [ -s "$ORIG" ]; then
-    # Aggressive resize + JPEG compression: 400px wide, quality 40 → ~8-15KB
-    # Small enough for the API to process instantly via Read tool
+  curl -sL --max-time 15 "$url" -o "/tmp/pipeline-screenshots/orig-${COUNT}" 2>/dev/null
+  if [ -f "/tmp/pipeline-screenshots/orig-${COUNT}" ] && [ -s "/tmp/pipeline-screenshots/orig-${COUNT}" ]; then
+    # Convert to JPEG 600px wide — balances quality with API speed
     python3 -c "
 from PIL import Image
-img = Image.open('$ORIG').convert('RGB')
-if img.width > 400:
-    ratio = 400 / img.width
-    img = img.resize((400, int(img.height * ratio)), Image.LANCZOS)
-img.save('$FINAL', 'JPEG', quality=40, optimize=True)
-" 2>/dev/null && rm -f "$ORIG" || mv "$ORIG" "$FINAL"
+img = Image.open('/tmp/pipeline-screenshots/orig-${COUNT}').convert('RGB')
+if img.width > 600:
+    ratio = 600 / img.width
+    img = img.resize((600, int(img.height * ratio)), Image.LANCZOS)
+img.save('$FINAL', 'JPEG', quality=60, optimize=True)
+" 2>/dev/null || cp "/tmp/pipeline-screenshots/orig-${COUNT}" "$FINAL"
+    rm -f "/tmp/pipeline-screenshots/orig-${COUNT}"
     SIZE=$(stat -c%s "$FINAL" 2>/dev/null || echo 0)
     echo "Screenshot ready: issue-${COUNT}.jpg (${SIZE} bytes)"
   else
@@ -83,7 +82,10 @@ done
 [ "$COUNT" -eq 0 ] && echo "No screenshots in issue body"
 ```
 
-If screenshots were downloaded, view them with the Read tool:
+If screenshots were downloaded, view them with the Read tool.
+**Note:** Image reads take 20-60 seconds for the API to process — this is
+normal, not a hang. Wait for the response.
+
 ```
 Read tool → file_path: /tmp/pipeline-screenshots/issue-1.jpg
 ```
