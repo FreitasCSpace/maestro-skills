@@ -296,9 +296,7 @@ git push -u origin HEAD
 
 ---
 
-## Phase 1 — Investigate (bug-fix and security-fix only)
-
-Skip for features and refactors.
+## Phase 1 — Investigate
 
 **Read the gstack investigate skill and follow its methodology:**
 
@@ -316,9 +314,7 @@ git add PIPELINE.md && git commit -m "pipeline: investigate" && git push
 
 ---
 
-## Phase 2 — Think (features only)
-
-Skip for bug-fix, security-fix, and refactor.
+## Phase 2 — Think
 
 **Read the gstack office-hours skill and follow its methodology:**
 
@@ -335,9 +331,7 @@ git add PIPELINE.md && git commit -m "pipeline: think" && git push
 
 ---
 
-## Phase 3 — Plan (features and refactors only)
-
-Skip for bug-fix and security-fix.
+## Phase 3 — Plan
 
 **Read the gstack plan-eng-review skill and follow its methodology:**
 
