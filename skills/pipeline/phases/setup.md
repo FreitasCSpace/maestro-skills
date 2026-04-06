@@ -51,44 +51,9 @@ ISSUE_JSON=$(gh issue view "$ISSUE_NUM" --repo "$REPO" --json title,body,labels,
 echo "$ISSUE_JSON"
 ```
 
-Download and optimize screenshots for visual analysis:
-
-```bash
-mkdir -p /tmp/pipeline-screenshots
-ISSUE_BODY=$(echo "$ISSUE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('body',''))")
-IMG_URLS=$(echo "$ISSUE_BODY" | grep -oP 'https://[^\s\)\"]+\.(png|jpg|jpeg|gif|webp)' | head -5)
-COUNT=0
-for url in $IMG_URLS; do
-  COUNT=$((COUNT + 1))
-  FINAL="/tmp/pipeline-screenshots/issue-${COUNT}.jpg"
-  curl -sL --max-time 15 "$url" -o "/tmp/pipeline-screenshots/orig-${COUNT}" 2>/dev/null
-  if [ -f "/tmp/pipeline-screenshots/orig-${COUNT}" ] && [ -s "/tmp/pipeline-screenshots/orig-${COUNT}" ]; then
-    # Convert to JPEG 600px wide — balances quality with API speed
-    python3 -c "
-from PIL import Image
-img = Image.open('/tmp/pipeline-screenshots/orig-${COUNT}').convert('RGB')
-if img.width > 600:
-    ratio = 600 / img.width
-    img = img.resize((600, int(img.height * ratio)), Image.LANCZOS)
-img.save('$FINAL', 'JPEG', quality=60, optimize=True)
-" 2>/dev/null || cp "/tmp/pipeline-screenshots/orig-${COUNT}" "$FINAL"
-    rm -f "/tmp/pipeline-screenshots/orig-${COUNT}"
-    SIZE=$(stat -c%s "$FINAL" 2>/dev/null || echo 0)
-    echo "Screenshot ready: issue-${COUNT}.jpg (${SIZE} bytes)"
-  else
-    rm -f "$ORIG"
-  fi
-done
-[ "$COUNT" -eq 0 ] && echo "No screenshots in issue body"
-```
-
-If screenshots were downloaded, view them with the Read tool.
-**Note:** Image reads take 20-60 seconds for the API to process — this is
-normal, not a hang. Wait for the response.
-
-```
-Read tool → file_path: /tmp/pipeline-screenshots/issue-1.jpg
-```
+<!-- Screenshot reading DISABLED for testing — isolating pipeline freeze cause -->
+<!-- Screenshots will be re-enabled after confirming the pipeline completes without them -->
+Skip screenshot downloading for now. Use the issue text description only.
 
 ## Configure git
 
