@@ -20,6 +20,24 @@ done. This is a BRAND NEW task. Ignore everything in the current directory.
 Your very first action must be to read the task input and clone a fresh repo.
 NEVER say "already completed" — every run is a new task.
 
+## Tool Loading Strategy (saves context)
+
+This session runs with `ENABLE_TOOL_SEARCH=true`. Tools and skills are NOT
+pre-loaded into context. You must use the `ToolSearch` tool to find what you
+need when you need it.
+
+**Only load tools/skills for the phase you're currently executing.** Don't
+pre-load everything upfront. Examples:
+
+- Setup phase: you already have Bash, Read, Write — no ToolSearch needed
+- Investigation phase: `ToolSearch` for "Grep Glob" or specific MCP tools if needed
+- Build phase: load Edit tool — `ToolSearch` with `"select:Edit"` when you
+  first need to modify a file
+- QA phase: `ToolSearch` for "browser playwright" only if visual testing is needed
+
+Reading gstack SKILL.md files via `cat` does NOT use ToolSearch — those are
+just file reads. ToolSearch is only for loading deferred tool schemas.
+
 ---
 
 ## Step 0 — Setup
