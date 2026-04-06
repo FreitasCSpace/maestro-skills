@@ -689,6 +689,33 @@ git add .pipeline/CODEBASE_MAP.md && git commit -m "pipeline: update codebase ma
 
 ---
 
+## Phase 4.5 — Design Review (UI changes only)
+
+Skip if the changes are backend-only, config-only, or have no visual impact.
+Run this phase if ANY `.tsx`, `.jsx`, `.css`, `.scss`, or `.module.css` files
+were modified.
+
+**Read the gstack design-review skill and follow its methodology:**
+
+```bash
+cat ~/.claude/skills/gstack/design-review/SKILL.md
+```
+
+Focus on the diff — check spacing, alignment, hierarchy, color consistency,
+and responsive behavior of the changed components. If the browse binary is
+available, take screenshots to compare before/after.
+
+If design issues found: fix them, commit. Max 2 fix iterations.
+
+Append `## Design Review` to PIPELINE.md with findings.
+
+```bash
+git add -A && git commit -m "pipeline: design review fixes" && git push 2>/dev/null || true
+git add -A PIPELINE.md && git commit -m "pipeline: design review" && git push
+```
+
+---
+
 ## Phase 5 — Review
 
 **Read the gstack review skill and follow its FULL methodology:**
@@ -793,6 +820,33 @@ Update PIPELINE.md `## Status` to `COMPLETE`. Add `## Ship` with PR URL.
 
 ```bash
 git add PIPELINE.md && git commit -m "pipeline: shipped" && git push
+```
+
+---
+
+## Phase 9 — Document Release
+
+**Read the gstack document-release skill and follow its methodology:**
+
+```bash
+cat ~/.claude/skills/gstack/document-release/SKILL.md
+```
+
+Update any project documentation that is now out of date because of the
+changes shipped in this pipeline run. This includes:
+
+- README.md — if new features, commands, or setup steps were added
+- ARCHITECTURE.md — if structural changes were made
+- CLAUDE.md — if new commands, conventions, or patterns were introduced
+- Any other docs referenced in the codebase
+
+Only update docs that are actually affected by the changes. Do not touch
+docs that are still accurate.
+
+Append `## Documentation` to PIPELINE.md listing what was updated.
+
+```bash
+git add -A && git commit -m "pipeline: update documentation" && git push
 ```
 
 ---
