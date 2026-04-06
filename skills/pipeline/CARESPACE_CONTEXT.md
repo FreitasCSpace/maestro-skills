@@ -131,121 +131,103 @@ So issue attachments use **`raw.githubusercontent.com`** (publicly accessible, n
 
 ## Architecture Diagram
 
-How all CareSpace repos connect to deliver the final product:
+CareSpace is a 5-layer system. Read top to bottom:
 
 ```mermaid
-graph TB
-    %% ─── Users ───
-    Patient([👤 Patient])
-    Clinician([👨‍⚕️ Clinician])
-    Admin([👔 SuperAdmin])
-    Inmate([👤 Inmate])
+flowchart TB
+    Users["👤 Users<br/><i>Patients · Clinicians · Admins · Inmates</i>"]
 
-    %% ─── Client apps ───
-    subgraph Clients["Client Applications"]
-        UI[carespace-ui<br/>React + TS<br/>Web App]
-        AndroidApp[carespace-mobile-android<br/>Native Kotlin]
-        IOSApp[carespace-mobile-ios<br/>Native Swift]
-        FlutterApp[carespace_mobile<br/>Legacy Flutter]
-        Kiosk[carespace-kiosk<br/>Flutter + Riverpod]
+    subgraph L1 ["① Client Apps"]
+        direction LR
+        UI["carespace-ui<br/><i>React web</i>"]
+        Mob["carespace-mobile-{android,ios}<br/><i>Native</i>"]
+        Flut["carespace_mobile · carespace-kiosk<br/><i>Flutter</i>"]
     end
 
-    %% ─── Embedded SDK ───
-    subgraph SDK["Embeddable SDK"]
-        SDKPkg[carespace-sdk<br/>Flutter Package<br/>+ Google ML Kit]
+    SDK["② carespace-sdk<br/><i>ROM scan widget · embedded in mobile/kiosk</i>"]
+
+    subgraph L3 ["③ Backend Services"]
+        direction LR
+        Admin["carespace-admin<br/><i>NestJS · main API · auth</i>"]
+        Strapi["carespace-strapi<br/><i>CMS · clinical content</i>"]
+        Posture["carespace-posture-engine<br/><i>MoveNet · plumb-line</i>"]
+        Body3D["carespace-3d-body-service<br/><i>SAM-3D mesh</i>"]
     end
 
-    %% ─── Backend services ───
-    subgraph Backend["Backend Services"]
-        Admin_API[carespace-admin<br/>NestJS 11<br/>Main API + Auth]
-        Posture[carespace-posture-engine<br/>NestJS + MoveNet<br/>Plumb-line]
-        Body3D[carespace-3d-body-service<br/>FastAPI + SAM-3D<br/>3D Mesh]
-        Strapi[carespace-strapi<br/>Strapi 5 CMS<br/>Reference Content]
+    subgraph L4 ["④ Data & Infra"]
+        direction LR
+        DB[("PostgreSQL<br/>MySQL")]
+        Blob[("Azure Blob<br/><i>PHI files</i>")]
+        Bus(["Azure Service Bus<br/><i>async queue</i>"])
+        Auth(["FusionAuth · Key Vault"])
     end
 
-    %% ─── Data + infra ───
-    subgraph Data["Data & Infra"]
-        Postgres[(PostgreSQL<br/>via Prisma)]
-        MySQL[(MySQL<br/>Strapi)]
-        Blob[(Azure Blob<br/>PHI Files)]
-        ServiceBus[Azure Service Bus<br/>Async Queue]
-        FusionAuth[FusionAuth<br/>IdP / SSO]
-        KeyVault[Azure Key Vault<br/>Secrets]
+    subgraph L5 ["⑤ Ops & Tooling"]
+        direction LR
+        BT["carespace-bug-tracker<br/><i>auto issue bot</i>"]
+        Mae["Maestro<br/><i>pipeline orchestrator</i>"]
     end
 
-    %% ─── Tooling / ops ───
-    subgraph Tooling["Tooling & Ops"]
-        BugTracker[carespace-bug-tracker<br/>Next.js<br/>Auto Issue Bot]
-        Maestro[Maestro<br/>Pipeline Orchestrator]
-        ClickUp[ClickUp<br/>Task Mirror]
-        Slack[Slack<br/>Alerts]
-    end
+    Users --> L1
+    L1 --> SDK
+    L1 --> L3
+    SDK --> L3
+    L3 --> L4
+    L3 -.->|posture jobs| Bus
+    Bus -.-> Posture
+    Users -.->|reports bug| BT
+    BT -->|creates issue| Mae
+    Mae -->|opens PR| L1
+    Mae -->|opens PR| L3
 
-    %% ─── User flows ───
-    Patient -->|web sessions| UI
-    Patient -->|exercise programs| AndroidApp
-    Patient -->|exercise programs| IOSApp
-    Inmate -->|kiosk check-in| Kiosk
-    Clinician -->|patient triage<br/>posture review| UI
-    Admin -->|admin dashboard| UI
+    classDef users fill:#0c4a6e,stroke:#0ea5e9,color:#fff,stroke-width:2px
+    classDef l1 fill:#1e3a8a,stroke:#3b82f6,color:#fff
+    classDef l2 fill:#713f12,stroke:#eab308,color:#fff
+    classDef l3 fill:#7c2d12,stroke:#ea580c,color:#fff
+    classDef l4 fill:#14532d,stroke:#22c55e,color:#fff
+    classDef l5 fill:#3f1d5e,stroke:#a855f7,color:#fff
 
-    %% ─── Frontend ↔ backend ───
-    UI -->|REST + RTK Query| Admin_API
-    UI -->|reference content| Strapi
-    UI -->|on-device pose<br/>TensorFlow.js + MediaPipe| UI
+    class Users users
+    class UI,Mob,Flut l1
+    class SDK l2
+    class Admin,Strapi,Posture,Body3D l3
+    class DB,Blob,Bus,Auth l4
+    class BT,Mae l5
+```
 
-    AndroidApp -->|REST| Admin_API
-    AndroidApp -.->|embeds| SDKPkg
-    IOSApp -->|REST| Admin_API
-    IOSApp -.->|embeds| SDKPkg
-    FlutterApp -->|REST| Admin_API
-    FlutterApp -.->|embeds| SDKPkg
-    Kiosk -->|REST| Admin_API
-    Kiosk -.->|embeds| SDKPkg
+### Layer responsibilities
 
-    %% ─── Backend ↔ services ───
-    Admin_API -->|reads schemas| Postgres
-    Admin_API -->|stores PHI files| Blob
-    Admin_API -->|queue posture jobs| ServiceBus
-    Admin_API -->|auth via JWT| FusionAuth
-    Admin_API -->|secrets at boot| KeyVault
-    Admin_API -->|reads content| Strapi
-    Admin_API -.->|HTTP call for 3D| Body3D
+| # | Layer | What it does |
+|---|-------|--------------|
+| ① | **Client Apps** | What users see. Web (React), native mobile (Kotlin/Swift), Flutter (legacy + kiosk). All talk to backend via REST. |
+| ② | **SDK** | `carespace-sdk` is embedded inside the mobile apps. Provides camera + Google ML Kit pose detection for ROM scans. NOT used by web. |
+| ③ | **Backend Services** | `carespace-admin` is the main API (auth, patient data, sessions). `carespace-strapi` holds clinical reference content (exercises, joints). `posture-engine` and `3d-body-service` are async workers. |
+| ④ | **Data & Infra** | PostgreSQL (admin) + MySQL (Strapi). Azure Blob for PHI files. Azure Service Bus for async posture jobs. FusionAuth + Key Vault for auth/secrets. |
+| ⑤ | **Ops & Tooling** | `bug-tracker` auto-creates GitHub issues from user reports. `Maestro` runs the autonomous pipeline that fixes those issues and opens PRs. |
 
-    ServiceBus -->|consumes assessment msgs| Posture
-    Posture -->|stores results| ServiceBus
-    ServiceBus -->|results back| Admin_API
+### Issue → Fix loop (the part this pipeline lives in)
 
-    Posture -->|fetch images| Blob
-    Body3D -->|loads SAM-3D model| Body3D
+```mermaid
+flowchart LR
+    User["👤 User"]
+    BT["carespace-bug-tracker"]
+    Claude1["Claude Opus 4.5<br/><i>enhances</i>"]
+    GH["GitHub Issue<br/><i>in target repo</i>"]
+    Mae["Maestro<br/><i>autonomous pipeline</i>"]
+    PR["PR → develop"]
 
-    Strapi -->|stores content| MySQL
-    Strapi -->|media uploads| Blob
+    User -->|reports bug| BT
+    BT --> Claude1
+    Claude1 --> GH
+    GH -->|labeled 'pipeline'| Mae
+    Mae -->|investigate · plan · build · review · qa · ship| PR
 
-    %% ─── Bug flow ───
-    Patient -.->|reports bug| BugTracker
-    Clinician -.->|reports bug| BugTracker
-    BugTracker -->|Claude Opus 4.5<br/>+ codebase context| BugTracker
-    BugTracker -->|creates issue| GH[GitHub Repos]
-    BugTracker -->|mirror task| ClickUp
-    BugTracker -->|webhook HMAC| Slack
-
-    %% ─── Pipeline flow ───
-    GH -->|labeled pipeline| Maestro
-    Maestro -->|/pipeline skill<br/>via Claude Code CLI| Maestro
-    Maestro -->|opens PR → develop| GH
-
-    classDef client fill:#1e3a5f,stroke:#3b82f6,color:#fff
-    classDef backend fill:#7c2d12,stroke:#ea580c,color:#fff
-    classDef data fill:#14532d,stroke:#22c55e,color:#fff
-    classDef tooling fill:#3f1d5e,stroke:#a855f7,color:#fff
-    classDef sdk fill:#713f12,stroke:#eab308,color:#fff
-
-    class UI,AndroidApp,IOSApp,FlutterApp,Kiosk client
-    class Admin_API,Posture,Body3D,Strapi backend
-    class Postgres,MySQL,Blob,ServiceBus,FusionAuth,KeyVault data
-    class BugTracker,Maestro,ClickUp,Slack tooling
-    class SDKPkg sdk
+    style User fill:#0c4a6e,stroke:#0ea5e9,color:#fff
+    style BT fill:#3f1d5e,stroke:#a855f7,color:#fff
+    style Claude1 fill:#7c2d12,stroke:#ea580c,color:#fff
+    style GH fill:#1e3a8a,stroke:#3b82f6,color:#fff
+    style Mae fill:#3f1d5e,stroke:#a855f7,color:#fff
+    style PR fill:#14532d,stroke:#22c55e,color:#fff
 ```
 
 ### How a typical request flows
