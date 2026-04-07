@@ -30,6 +30,7 @@ $(tail -3 /tmp/import-log.txt)
 $(tail -1 /tmp/comment-log.txt)
 $(tail -1 /tmp/sp-log.txt)
 $(tail -1 /tmp/stale-issues-log.txt)
+$(tail -1 /tmp/orphan-link-log.txt 2>/dev/null)
 
 ## Needs Attention
 - Unassigned >7d: $UNASSIGNED

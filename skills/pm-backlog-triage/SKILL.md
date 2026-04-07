@@ -40,6 +40,7 @@ Execute steps **one at a time** in order.
 | 0 | [steps/step-0-load-context.md](steps/step-0-load-context.md) | Source shared context |
 | 1 | [steps/step-1-collect-gh-issues.md](steps/step-1-collect-gh-issues.md) | Collect open GitHub issues → /tmp/gh-issues.tsv |
 | 2 | [steps/step-2-load-cu-backlog.md](steps/step-2-load-cu-backlog.md) | Load ClickUp backlog paginated → /tmp/cu-backlog.json |
+| 2.5 | [steps/step-2.5-link-orphan-tasks.md](steps/step-2.5-link-orphan-tasks.md) | Fuzzy-link orphan CU tasks to GH issues (≥0.85 similarity) |
 | 3 | [steps/step-3-validate-gh-cu-links.md](steps/step-3-validate-gh-cu-links.md) | GraphQL batch-validate GH↔CU links, delete ghosts, close stale |
 | 4 | [steps/step-4-import-new-issues.md](steps/step-4-import-new-issues.md) | Import new GH issues, set SP, assign lead, post bot comment |
 | 5 | [steps/step-5-backfill-gh-comments.md](steps/step-5-backfill-gh-comments.md) | Backfill/repair bot comments on all live GH issues |
@@ -55,8 +56,11 @@ Execute steps **one at a time** in order.
 |------|-----------|---------|
 | /tmp/gh-issues.tsv | Step 1 | Step 4 |
 | /tmp/cu-pages.ndjson | Step 2 | Step 2 (intermediate) |
-| /tmp/cu-backlog.json | Step 2 | Steps 3, 6, 7 |
-| /tmp/cu-urls.txt | Step 2 | Step 4 |
+| /tmp/cu-backlog.json | Step 2 | Steps 2.5, 3, 6, 7 |
+| /tmp/cu-urls.txt | Step 2, 2.5 | Step 4 |
+| /tmp/cu-orphans.tsv | Step 2.5 | Step 2.5 (intermediate) |
+| /tmp/gh-search-corpus.tsv | Step 2.5 | Step 2.5 (intermediate) |
+| /tmp/orphan-link-log.txt | Step 2.5 | Step 7 |
 | /tmp/cu-gh-map.tsv | Step 3 | Steps 4, 5 |
 | /tmp/gh-states.tsv | Step 3 | Step 3 (intermediate) |
 | /tmp/cu-ghost.tsv | Step 3 | Step 3 (intermediate) |
@@ -65,7 +69,11 @@ Execute steps **one at a time** in order.
 | /tmp/new-issues.tsv | Step 4 | Step 4 (intermediate) |
 | /tmp/import-log.txt | Step 4 | Step 7 |
 | /tmp/comment-log.txt | Step 5 | Step 7 |
-| /tmp/no-sp.json | Step 6 | Step 6 (intermediate) |
+| /tmp/parent-ids.json | Step 6 | Step 6 (intermediate) |
+| /tmp/no-sp-leaves.json | Step 6 | Step 6 (intermediate) |
+| /tmp/cu-rollup.json | Step 6 | Step 6 (intermediate) |
+| /tmp/parent-sums.json | Step 6 | Step 6 (intermediate) |
+| /tmp/parents-needing-rollup.json | Step 6 | Step 6 (intermediate) |
 | /tmp/sp-log.txt | Step 6 | Step 7 |
 | /tmp/triage.json | Step 7 | Step 7 (intermediate) |
 | /tmp/triage-report.md | Step 7 | Step 8 |

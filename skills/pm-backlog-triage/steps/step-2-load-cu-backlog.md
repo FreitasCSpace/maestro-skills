@@ -25,7 +25,8 @@ jq -s --arg cf "$SP_FIELD_ID" '
       pri: (.priority.priority // "4"),
       sp: (((.custom_fields[]? | select(.id==$cf) | .value) // 0) | tostring),
       age: (((now - ((.date_created|tonumber)/1000))/86400) | floor),
-      assignees: [.assignees[].username]
+      assignees: [.assignees[].username],
+      parent: (.parent // null)
   } ]' /tmp/cu-pages.ndjson > /tmp/cu-backlog.json
 
 # Build URL index for dedup (parse desc field, not raw JSON)
