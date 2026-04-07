@@ -42,13 +42,25 @@ while IFS=$'\t' read -r repo num title url label domain; do
   # Domain lead for auto-assignment
   LEAD="${DOMAIN_LEAD[$domain]:-}"
 
+  # Type prefix from label (BUG/FEATURE/TASK/SECURITY) — drives Step 6 SP estimation
+  case "$label" in
+    bug)                 TYPE="BUG";      TYPE_TAG="bug" ;;
+    feature|enhancement) TYPE="FEATURE";  TYPE_TAG="feature" ;;
+    security|compliance) TYPE="SECURITY"; TYPE_TAG="security" ;;
+    *)                   TYPE="TASK";     TYPE_TAG="task" ;;
+  esac
+
+  # Strip any existing "Bug:"/"Feature:"/"Task:" prefix from title to avoid double-tagging
+  CLEAN_TITLE=$(echo "$title" | sed -E 's/^(Bug|Feature|Feat|Task|Security|Chore):[[:space:]]*//i')
+
   PAYLOAD=$(jq -n \
-    --arg n "[$repo] $title" \
-    --arg d "GitHub: $url\nDomain: $domain\nLabel: $label" \
+    --arg n "[$TYPE] $CLEAN_TITLE" \
+    --arg d "GitHub: $url\nRepo: $repo\nDomain: $domain\nLabel: $label" \
     --argjson p $PRI \
     --arg tag1 "pm-bot-imported" \
     --arg tag2 "$domain" \
-    '{name:$n, description:$d, priority:$p, tags:[$tag1,$tag2]}')
+    --arg tag3 "$TYPE_TAG" \
+    '{name:$n, description:$d, priority:$p, tags:[$tag1,$tag2,$tag3]}')
 
   RES=$(cu_api POST "list/$LIST_MASTER_BACKLOG/task" "$PAYLOAD" | jq -r '.id // "ERROR"')
 

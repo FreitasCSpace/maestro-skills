@@ -38,6 +38,7 @@ CLOSED_GH=$(grep -c "^CLOSED " /tmp/stale-issues-log.txt 2>/dev/null || echo 0)
 SP_LEAVES=$(grep -c "^LEAF SP:" /tmp/sp-log.txt 2>/dev/null || echo 0)
 SP_ROLLUPS=$(grep -c "^ROLLUP SP:" /tmp/sp-log.txt 2>/dev/null || echo 0)
 LINKED_ORPHANS=$(grep -c "^LINKED:" /tmp/orphan-link-log.txt 2>/dev/null || echo 0)
+RENAMED=$(grep -c "^RENAMED:" /tmp/normalize-log.txt 2>/dev/null || echo 0)
 COMMENT_OPS=$(grep -E "^(created|updated|deduped)" /tmp/comment-log.txt 2>/dev/null | wc -l)
 
 # Build structured context for AI synthesis
@@ -59,6 +60,7 @@ closed_via_gh=$CLOSED_GH
 sp_estimated_leaves=$SP_LEAVES
 sp_rolled_up_parents=$SP_ROLLUPS
 fuzzy_linked_orphans=$LINKED_ORPHANS
+renamed_legacy_imports=$RENAMED
 gh_bot_comments=$COMMENT_OPS
 
 === TOP UNASSIGNED AGING (>7d, no owner) ===

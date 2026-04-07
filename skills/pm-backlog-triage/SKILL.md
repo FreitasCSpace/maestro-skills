@@ -42,7 +42,8 @@ Execute steps **one at a time** in order.
 | 2 | [steps/step-2-load-cu-backlog.md](steps/step-2-load-cu-backlog.md) | Load ClickUp backlog paginated → /tmp/cu-backlog.json |
 | 2.5 | [steps/step-2.5-link-orphan-tasks.md](steps/step-2.5-link-orphan-tasks.md) | Fuzzy-link orphan CU tasks to GH issues (≥0.85 similarity) |
 | 3 | [steps/step-3-validate-gh-cu-links.md](steps/step-3-validate-gh-cu-links.md) | GraphQL batch-validate GH↔CU links, delete ghosts, close stale |
-| 4 | [steps/step-4-import-new-issues.md](steps/step-4-import-new-issues.md) | Import new GH issues, set SP, assign lead, post bot comment |
+| 4 | [steps/step-4-import-new-issues.md](steps/step-4-import-new-issues.md) | Import new GH issues with `[TYPE]` naming + type tag |
+| 4.5 | [steps/step-4.5-normalize-imports.md](steps/step-4.5-normalize-imports.md) | Rename legacy `[carespace-*]` imports to `[TYPE]` + add type tag |
 | 5 | [steps/step-5-backfill-gh-comments.md](steps/step-5-backfill-gh-comments.md) | Backfill/repair bot comments on all live GH issues |
 | 6 | [steps/step-6-estimate-sp.md](steps/step-6-estimate-sp.md) | Estimate SP for tasks missing it |
 | 7 | [steps/step-7-triage-report.md](steps/step-7-triage-report.md) | Build triage health report → /tmp/triage-report.md |
@@ -68,6 +69,8 @@ Execute steps **one at a time** in order.
 | /tmp/stale-issues-log.txt | Step 3 | Step 7 |
 | /tmp/new-issues.tsv | Step 4 | Step 4 (intermediate) |
 | /tmp/import-log.txt | Step 4 | Step 7 |
+| /tmp/bad-named.tsv | Step 4.5 | Step 4.5 (intermediate) |
+| /tmp/normalize-log.txt | Step 4.5 | Step 7 |
 | /tmp/comment-log.txt | Step 5 | Step 7 |
 | /tmp/parent-ids.json | Step 6 | Step 6 (intermediate) |
 | /tmp/no-sp-leaves.json | Step 6 | Step 6 (intermediate) |
