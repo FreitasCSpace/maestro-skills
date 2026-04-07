@@ -146,10 +146,11 @@ done
 echo "Open PRs: $(wc -l < /tmp/open-prs.txt)"
 ```
 
-### Step 4: Build Standup Digest → /tmp/sprint-health.md
+### Step 4: Build Manager Briefing Digest → /tmp/sprint-health.md
 
-Groups tasks by assignee. Each person gets a single-glance status summary.
-Format is designed to be read aloud in standup or scrolled on mobile.
+**Option B — Manager Briefing format.**
+Flags first (items needing attention), then per-person AI narrative paragraphs,
+then completions. Designed to be read by a non-technical manager in 60 seconds.
 
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
@@ -163,14 +164,12 @@ NOW_S=$(date +%s)
 
 # ── Sprint health math ───────────────────────────────────────────────
 TOTAL=$(jq 'length' /tmp/sprint-tasks.json)
-DONE=$(jq  '[.[]|select(.status|test("complete|done|closed|resolved"))]|length'  /tmp/sprint-tasks.json)
-IN_P=$(jq  '[.[]|select(.status|test("in progress|review|in review|active"))]|length' /tmp/sprint-tasks.json)
-BLKD=$(jq  '[.[]|select(.status|test("blocked|waiting"))]|length'                     /tmp/sprint-tasks.json)
-TODO=$(jq  '[.[]|select(.status|test("to do|open|pending|backlog|new"))]|length'       /tmp/sprint-tasks.json)
-
-TOTAL_SP=$(jq '[.[].sp] | add // 0'                                                         /tmp/sprint-tasks.json)
-DONE_SP=$(jq  '[.[]|select(.status|test("complete|done|closed|resolved"))|.sp]|add // 0'    /tmp/sprint-tasks.json)
-REMAIN_SP=$(( TOTAL_SP - DONE_SP ))
+DONE=$(jq   '[.[]|select(.status|test("complete|done|closed|resolved"))]|length'     /tmp/sprint-tasks.json)
+IN_P=$(jq   '[.[]|select(.status|test("in progress|review|in review|active"))]|length' /tmp/sprint-tasks.json)
+BLKD=$(jq   '[.[]|select(.status|test("blocked|waiting"))]|length'                   /tmp/sprint-tasks.json)
+TODO=$(jq   '[.[]|select(.status|test("to do|open|pending|backlog|new"))]|length'    /tmp/sprint-tasks.json)
+TOTAL_SP=$(jq '[.[].sp]|add//0'                                                       /tmp/sprint-tasks.json)
+DONE_SP=$(jq  '[.[]|select(.status|test("complete|done|closed|resolved"))|.sp]|add//0' /tmp/sprint-tasks.json)
 
 [ "$TOTAL_SP" -gt 0 ] && COMPLETION=$(( DONE_SP * 100 / TOTAL_SP )) || COMPLETION=0
 
@@ -190,139 +189,124 @@ else
   TIME_PCT=50; DAYS_LEFT="?"; DUE_FMT="no due date"
 fi
 
-# Health: on-track if completion within 10% of time elapsed
+# Health indicator
 THRESHOLD=$(( TIME_PCT - 10 ))
 [ "$THRESHOLD" -lt 0 ] && THRESHOLD=0
-if   [ "$COMPLETION" -ge "$THRESHOLD" ];        then HEALTH="On Track"; EMOJI="🟢"
-elif [ "$COMPLETION" -ge $(( THRESHOLD - 15 )) ]; then HEALTH="At Risk";  EMOJI="🟡"
-else HEALTH="Behind";   EMOJI="🔴"; fi
+if   [ "$COMPLETION" -ge "$THRESHOLD" ];           then HEALTH="On Track"; H_EMOJI="🟢"
+elif [ "$COMPLETION" -ge $(( THRESHOLD - 15 )) ];  then HEALTH="At Risk";  H_EMOJI="🟡"
+else HEALTH="Behind"; H_EMOJI="🔴"; fi
 
 STALE_COUNT=$(wc -l < /tmp/stale-tasks.tsv)
 PR_COUNT=$(wc -l < /tmp/open-prs.txt)
 UNASSIGNED=$(jq '[.[]|select(.assignees|length==0)]|length' /tmp/sprint-tasks.json)
 
-# ── Assignee grouping ────────────────────────────────────────────────
-# Extract all unique assignees + "unassigned" bucket
+# ── Extract unique assignees (non-unassigned, sorted) ───────────────
 jq -r '
-  [ .[] | if (.assignees|length)==0 then "unassigned" else .assignees[] end ]
-  | unique | .[]
+  [.[] | select(.assignees|length>0) | .assignees[]] | unique | .[]
 ' /tmp/sprint-tasks.json > /tmp/assignees.txt
 
-> /tmp/by-assignee.md
+# ── Per-person metrics + raw task context for AI ────────────────────
+# Produces /tmp/person-context.md — structured input for Claude synthesis
+> /tmp/person-context.md
 
 while IFS= read -r person; do
-  # Tasks for this person (by assignee or unassigned bucket)
-  if [ "$person" = "unassigned" ]; then
-    PERSON_TASKS=$(jq -r '[.[]|select(.assignees|length==0)]' /tmp/sprint-tasks.json)
-  else
-    PERSON_TASKS=$(jq -r --arg p "$person" '[.[]|select(.assignees|contains([$p]))]' /tmp/sprint-tasks.json)
-  fi
+  PERSON_TASKS=$(jq --arg p "$person" '[.[]|select(.assignees|contains([$p]))]' /tmp/sprint-tasks.json)
 
-  P_DONE=$(echo "$PERSON_TASKS" | jq '[.[]|select(.status|test("complete|done|closed|resolved"))]|length')
-  P_INP=$(echo  "$PERSON_TASKS" | jq '[.[]|select(.status|test("in progress|review|in review|active"))]|length')
-  P_BLKD=$(echo "$PERSON_TASKS" | jq '[.[]|select(.status|test("blocked|waiting"))]|length')
-  P_TODO=$(echo "$PERSON_TASKS" | jq '[.[]|select(.status|test("to do|open|pending|backlog|new"))]|length')
-  P_SP_DONE=$(echo "$PERSON_TASKS" | jq '[.[]|select(.status|test("complete|done|closed|resolved"))|.sp]|add//0')
+  P_DONE=$(echo  "$PERSON_TASKS" | jq '[.[]|select(.status|test("complete|done|closed|resolved"))]|length')
+  P_INP=$(echo   "$PERSON_TASKS" | jq '[.[]|select(.status|test("in progress|review|in review|active"))]|length')
+  P_BLKD=$(echo  "$PERSON_TASKS" | jq '[.[]|select(.status|test("blocked|waiting"))]|length')
+  P_TODO=$(echo  "$PERSON_TASKS" | jq '[.[]|select(.status|test("to do|open|pending|backlog|new"))]|length')
+  P_SP_DONE=$(echo  "$PERSON_TASKS" | jq '[.[]|select(.status|test("complete|done|closed|resolved"))|.sp]|add//0')
   P_SP_TOTAL=$(echo "$PERSON_TASKS" | jq '[.[].sp]|add//0')
+  P_ZERO_SP=$(echo  "$PERSON_TASKS" | jq '[.[]|select(.sp==0)]|length')
 
-  # Person header
-  if [ "$person" = "unassigned" ]; then
-    HEADER="*⚠️ Unassigned* — $P_TODO tasks need an owner"
-  else
-    HEADER="*@${person}* — ${P_DONE} done · ${P_INP} in progress · ${P_BLKD} blocked · ${P_TODO} to do | ${P_SP_DONE}/${P_SP_TOTAL} SP"
-  fi
+  printf '=== PERSON: %s | done=%s in_progress=%s blocked=%s todo=%s sp=%s/%s zero_sp=%s ===\n' \
+    "$person" "$P_DONE" "$P_INP" "$P_BLKD" "$P_TODO" "$P_SP_DONE" "$P_SP_TOTAL" "$P_ZERO_SP" \
+    >> /tmp/person-context.md
 
-  {
-    echo "$HEADER"
-    # Done
-    echo "$PERSON_TASKS" | jq -r '.[]|select(.status|test("complete|done|closed|resolved"))|"  ✅ \(.name) _(\(.sp)SP)_"'
-    # In progress
-    echo "$PERSON_TASKS" | jq -r '.[]|select(.status|test("in progress|review|in review|active"))|"  🔄 \(.name) _(\(.sp)SP)_"'
-    # Blocked
-    echo "$PERSON_TASKS" | jq -r '.[]|select(.status|test("blocked|waiting"))|"  🚫 \(.name) _(\(.sp)SP)_"'
-    # To do (cap at 3 per person to keep digest scannable)
-    echo "$PERSON_TASKS" | jq -r '.[]|select(.status|test("to do|open|pending|backlog|new"))|"  📋 \(.name) _(\(.sp)SP)_"' | head -3
-    P_TODO_EXTRA=$(( P_TODO - 3 ))
-    [ "$P_TODO_EXTRA" -gt 0 ] && echo "  _…and $P_TODO_EXTRA more_"
-    echo ""
-  } >> /tmp/by-assignee.md
-
-done < /tmp/assignees.txt
-
-# ── AI summary per person ─────────────────────────────────────────────
-# For each non-unassigned person with in-progress or done tasks, write
-# a 1-2 sentence manager-facing summary of what they are working on.
-# Read task names + descriptions to give meaningful context.
-# Output format:  > @person — [summary sentence(s)]
-# Skip "unassigned" bucket. Skip people with 0 active/done tasks.
-#
-# INSTRUCTION TO CLAUDE: After the bash loop above has populated
-# /tmp/sprint-tasks.json and /tmp/assignees.txt, read each person's
-# tasks from the JSON and synthesize a concise summary paragraph.
-# Use task names AND task descriptions (field: .desc) to understand
-# what the work actually involves — not just the ticket title.
-# Write in third person, present tense. Be specific. Max 2 sentences.
-# Example: "@kishorkumar is focused on posture scanning improvements,
-# currently debugging angle detection on the mobile SDK and finalizing
-# the video frame processor. He also completed the MQTT reconnect fix
-# and the exercise session persistence layer this sprint."
-#
-# Write these summaries into /tmp/ai-summaries.md, one block per person:
-
-> /tmp/ai-summaries.md
-while IFS= read -r person; do
-  [ "$person" = "unassigned" ] && continue
-
-  if [ "$person" = "unassigned" ]; then
-    PERSON_TASKS=$(jq '[.[]|select(.assignees|length==0)]' /tmp/sprint-tasks.json)
-  else
-    PERSON_TASKS=$(jq --arg p "$person" '[.[]|select(.assignees|contains([$p]))]' /tmp/sprint-tasks.json)
-  fi
-
-  P_ACTIVE=$(echo "$PERSON_TASKS" | jq \
-    '[.[]|select(.status|test("in progress|review|active|complete|done|closed"))]|length')
-  [ "$P_ACTIVE" -eq 0 ] && continue
-
-  # Emit structured context for Claude to synthesize
-  echo "=== @${person} ===" >> /tmp/ai-summaries.md
+  # Active tasks (in progress + blocked) — full name + desc for AI
   echo "$PERSON_TASKS" | jq -r '
-    .[] | select(.status | test("in progress|review|active|complete|done|closed"))
-        | "[\(.status)] \(.name)\(.desc | if . != "" then " — \(.)" else "" end)"
-  ' >> /tmp/ai-summaries.md
-  echo "" >> /tmp/ai-summaries.md
+    .[] | select(.status | test("in progress|review|in review|active|blocked|waiting"))
+        | "[ACTIVE|\(.status)] \(.name)\(if .desc != "" then " — \(.desc)" else "" end)"
+  ' >> /tmp/person-context.md
+
+  # Completed tasks — names only
+  echo "$PERSON_TASKS" | jq -r '
+    .[] | select(.status | test("complete|done|closed|resolved"))
+        | "[DONE] \(.name)"
+  ' >> /tmp/person-context.md
+
+  # Todo tasks — names only
+  echo "$PERSON_TASKS" | jq -r '
+    .[] | select(.status | test("to do|open|pending|backlog|new"))
+        | "[TODO] \(.name)"
+  ' >> /tmp/person-context.md
+
+  echo "" >> /tmp/person-context.md
 
 done < /tmp/assignees.txt
 
-# Claude: read /tmp/ai-summaries.md and replace it with synthesized summaries.
-# Each section becomes: "> *@person* — [your 1-2 sentence summary]"
-# Keep manager focus: what problem are they solving, not just ticket names.
-
-# ── Stale tasks summary ──────────────────────────────────────────────
-STALE_LINES=""
-[ "$STALE_COUNT" -gt 0 ] && \
-  STALE_LINES=$(awk -F'\t' '{printf "  ⏱ %sd — %s (%s)\n", $1, $2, $3}' /tmp/stale-tasks.tsv | head -5)
-
-# ── Open PRs summary ────────────────────────────────────────────────
-PR_LINES=""
-[ "$PR_COUNT" -gt 0 ] && \
-  PR_LINES=$(awk -F'\t' '{printf "  🔗 %s — %s %s\n", $1, $2, $3}' /tmp/open-prs.txt | head -5)
-
-# ── Compose final digest ─────────────────────────────────────────────
-cat > /tmp/sprint-health.md << HEOF
-# Sprint Digest — $(date +"%B %d, %Y")
-
-${EMOJI} *${HEALTH}* — ${SPRINT_NAME}
-✅ ${DONE}/${TOTAL} done (${DONE_SP}/${TOTAL_SP} SP) | 🔄 ${IN_P} in progress | 🚫 ${BLKD} blocked | 📋 ${TODO} to do | ⏳ ${DAYS_LEFT}d left (${DUE_FMT}) | Time elapsed: ${TIME_PCT}%
-
-━━━━━━━━━━━━━━━━━━━━━
-$(cat /tmp/by-assignee.md)
-━━━━━━━━━━━━━━━━━━━━━
-*What's everyone working on?*
-$(cat /tmp/ai-summaries.md)
-━━━━━━━━━━━━━━━━━━━━━
-$([ "$STALE_COUNT" -gt 0 ] && echo "*Stale (>${STALE_TASK_DAYS}d no activity)*" && echo "$STALE_LINES")
-$([ "$PR_COUNT"    -gt 0 ] && echo "*Open PRs*" && echo "$PR_LINES")
-HEOF
+# ── INSTRUCTION TO CLAUDE: Generate the Manager Briefing ────────────
+#
+# Read /tmp/person-context.md (raw task data per person).
+# Read /tmp/stale-tasks.tsv (format: days<TAB>name<TAB>assignees).
+#
+# Produce /tmp/sprint-health.md with EXACTLY this structure:
+#
+# ------- FORMAT START -------
+#
+# # Sprint Digest — {DATE}
+#
+# {H_EMOJI} *{HEALTH}* — {SPRINT_NAME}
+# ✅ {DONE}/{TOTAL} done ({DONE_SP}/{TOTAL_SP} SP) | 🔄 {IN_P} in progress | 🚫 {BLKD} blocked | ⏳ {DAYS_LEFT}d left ({DUE_FMT}) | Sprint {TIME_PCT}% elapsed
+#
+# ━━━━━━━━━━━━━━━━━━━━━
+# ⚠️  FLAGS BEFORE YOU READ
+#
+# (Only include lines that apply — skip section entirely if nothing to flag)
+# • [person] has [N] tasks in progress with 0 SP — estimates needed
+# • [person]'s task "[name]" has been stale for [N] days — check in
+# • [N] tasks are unassigned — need an owner
+# • [person] has [N] blocked items
+#
+# ━━━━━━━━━━━━━━━━━━━━━
+# 👥  TEAM STATUS
+#
+# (For each person in /tmp/assignees.txt, one section:)
+#
+# *[Firstname Lastname]* — {status_emoji} {status_label} ({P_SP_DONE}/{P_SP_TOTAL} SP)
+# [1-2 sentence narrative paragraph. Third person, present tense. Focus on
+#  what problem they are solving, not just ticket names. Use task names AND
+#  descriptions from person-context.md. Be specific. Mention blocked items
+#  or stale items if they apply to this person. If they have completions,
+#  mention them in the same paragraph or as a brief closing sentence.]
+#
+# Status emoji + label rules:
+#   - ✅ Nearly done   → sp_done >= 80% of sp_total OR done >= 80% of tasks
+#   - 🔄 Active        → has in-progress tasks, no blockers
+#   - ⚠️ Needs attention → has blocked tasks OR zero-sp active tasks OR stale items
+#   - 📋 Not started   → all tasks are todo, nothing in progress or done
+#
+# ━━━━━━━━━━━━━━━━━━━━━
+# 🔗  OPEN PRs  (only if PR_COUNT > 0)
+# • [repo#num] — [title] @[author]
+# (max 5 lines, from /tmp/open-prs.txt which has format: repo#num<TAB>title<TAB>@author)
+#
+# ------- FORMAT END -------
+#
+# RULES:
+# - Do NOT include a raw task list anywhere. Only narrative + flags.
+# - Use display names (capitalize first letter) not raw usernames where possible.
+# - Keep each person's paragraph to 2-3 sentences max.
+# - If a person has 0 active or done tasks (all todo), use 📋 Not started and one brief sentence.
+# - The flags section should be sharp and actionable. Skip if no flags apply.
+# - Completions are woven into the narrative, NOT listed separately as tasks.
+# - Write the full file to /tmp/sprint-health.md using the Write tool.
+#
+# Available variables for substitution (already computed above):
+#   DATE=$(date +"%B %d, %Y")
+#   H_EMOJI, HEALTH, SPRINT_NAME, DONE, TOTAL, DONE_SP, TOTAL_SP
+#   IN_P, BLKD, TODO, DAYS_LEFT, DUE_FMT, TIME_PCT, UNASSIGNED
 
 cat /tmp/sprint-health.md
 ```
