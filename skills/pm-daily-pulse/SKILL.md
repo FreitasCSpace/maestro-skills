@@ -99,6 +99,7 @@ jq -s --arg cf "$SP_FIELD_ID" '
   [ .[].tasks[] | {
       id,
       name: .name[0:70],
+      desc: ((.description // "") | gsub("<[^>]+>"; "") | .[0:300]),
       status: (.status.status | ascii_downcase),
       assignees: [.assignees[].username],
       pri: (.priority.priority // "4"),
@@ -248,6 +249,54 @@ while IFS= read -r person; do
 
 done < /tmp/assignees.txt
 
+# ── AI summary per person ─────────────────────────────────────────────
+# For each non-unassigned person with in-progress or done tasks, write
+# a 1-2 sentence manager-facing summary of what they are working on.
+# Read task names + descriptions to give meaningful context.
+# Output format:  > @person — [summary sentence(s)]
+# Skip "unassigned" bucket. Skip people with 0 active/done tasks.
+#
+# INSTRUCTION TO CLAUDE: After the bash loop above has populated
+# /tmp/sprint-tasks.json and /tmp/assignees.txt, read each person's
+# tasks from the JSON and synthesize a concise summary paragraph.
+# Use task names AND task descriptions (field: .desc) to understand
+# what the work actually involves — not just the ticket title.
+# Write in third person, present tense. Be specific. Max 2 sentences.
+# Example: "@kishorkumar is focused on posture scanning improvements,
+# currently debugging angle detection on the mobile SDK and finalizing
+# the video frame processor. He also completed the MQTT reconnect fix
+# and the exercise session persistence layer this sprint."
+#
+# Write these summaries into /tmp/ai-summaries.md, one block per person:
+
+> /tmp/ai-summaries.md
+while IFS= read -r person; do
+  [ "$person" = "unassigned" ] && continue
+
+  if [ "$person" = "unassigned" ]; then
+    PERSON_TASKS=$(jq '[.[]|select(.assignees|length==0)]' /tmp/sprint-tasks.json)
+  else
+    PERSON_TASKS=$(jq --arg p "$person" '[.[]|select(.assignees|contains([$p]))]' /tmp/sprint-tasks.json)
+  fi
+
+  P_ACTIVE=$(echo "$PERSON_TASKS" | jq \
+    '[.[]|select(.status|test("in progress|review|active|complete|done|closed"))]|length')
+  [ "$P_ACTIVE" -eq 0 ] && continue
+
+  # Emit structured context for Claude to synthesize
+  echo "=== @${person} ===" >> /tmp/ai-summaries.md
+  echo "$PERSON_TASKS" | jq -r '
+    .[] | select(.status | test("in progress|review|active|complete|done|closed"))
+        | "[\(.status)] \(.name)\(.desc | if . != "" then " — \(.)" else "" end)"
+  ' >> /tmp/ai-summaries.md
+  echo "" >> /tmp/ai-summaries.md
+
+done < /tmp/assignees.txt
+
+# Claude: read /tmp/ai-summaries.md and replace it with synthesized summaries.
+# Each section becomes: "> *@person* — [your 1-2 sentence summary]"
+# Keep manager focus: what problem are they solving, not just ticket names.
+
 # ── Stale tasks summary ──────────────────────────────────────────────
 STALE_LINES=""
 [ "$STALE_COUNT" -gt 0 ] && \
@@ -267,6 +316,9 @@ ${EMOJI} *${HEALTH}* — ${SPRINT_NAME}
 
 ━━━━━━━━━━━━━━━━━━━━━
 $(cat /tmp/by-assignee.md)
+━━━━━━━━━━━━━━━━━━━━━
+*What's everyone working on?*
+$(cat /tmp/ai-summaries.md)
 ━━━━━━━━━━━━━━━━━━━━━
 $([ "$STALE_COUNT" -gt 0 ] && echo "*Stale (>${STALE_TASK_DAYS}d no activity)*" && echo "$STALE_LINES")
 $([ "$PR_COUNT"    -gt 0 ] && echo "*Open PRs*" && echo "$PR_LINES")
