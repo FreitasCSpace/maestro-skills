@@ -169,13 +169,25 @@ slack_post() {
     return 1
   fi
 
-  # Find channel ID
-  local ch_id=$(curl -s "https://slack.com/api/conversations.list?types=public_channel&limit=200" \
-    -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
-    | jq -r --arg name "${channel#\#}" '.channels[]|select(.name==$name)|.id')
+  # Find channel ID — paginate, search public + private channels
+  local ch_id="" cursor=""
+  while true; do
+    local url="https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200"
+    [ -n "$cursor" ] && url="${url}&cursor=${cursor}"
+    local page
+    page=$(curl -s "$url" -H "Authorization: Bearer $SLACK_BOT_TOKEN")
+    ch_id=$(echo "$page" | jq -r --arg n "$ch_name" '.channels[]|select(.name==$n)|.id' | head -1)
+    [ -n "$ch_id" ] && break
+    cursor=$(echo "$page" | jq -r '.response_metadata.next_cursor // empty')
+    [ -z "$cursor" ] && break
+  done
 
   if [ -z "$ch_id" ]; then
-    echo "ERROR: Channel $channel not found"
+    echo "ERROR: Channel #${ch_name} not found via conversations.list."
+    echo "  Possible causes:"
+    echo "  1. Bot not invited — run: /invite @<botname> in #${ch_name}"
+    echo "  2. Missing scope — bot token needs channels:read (public) or groups:read (private)"
+    echo "  3. Channel name mismatch — check exact name in Slack workspace"
     return 1
   fi
 
