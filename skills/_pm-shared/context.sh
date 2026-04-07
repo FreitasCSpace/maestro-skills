@@ -191,20 +191,42 @@ slack_post() {
     return 1
   fi
 
-  # Truncate body to 2800 chars for Block Kit limit
-  local body_trunc="${body:0:2800}"
+  # Chunk body into ≤2900-char pieces on paragraph boundaries (Block Kit section limit = 3000)
+  # Writes one JSON file per chunk, then jq-merges into a blocks array.
+  local chunk_dir=/tmp/.slack-chunks.$$
+  rm -rf "$chunk_dir"; mkdir -p "$chunk_dir"
+  awk -v dir="$chunk_dir" '
+    BEGIN { buf=""; n=0 }
+    {
+      line = $0 "\n"
+      if (length(buf) + length(line) > 2900 && length(buf) > 0) {
+        n++; printf "%s", buf > sprintf("%s/%04d.txt", dir, n); close(sprintf("%s/%04d.txt", dir, n))
+        buf = ""
+      }
+      buf = buf line
+    }
+    END {
+      if (length(buf) > 0) {
+        n++; printf "%s", buf > sprintf("%s/%04d.txt", dir, n); close(sprintf("%s/%04d.txt", dir, n))
+      }
+    }
+  ' <<< "$body"
 
-  # Build Block Kit blocks
+  # Build section blocks from each chunk file
+  local section_blocks
+  section_blocks=$(for f in "$chunk_dir"/*.txt; do
+    jq -Rs '{type:"section",text:{type:"mrkdwn",text:.}}' < "$f"
+  done | jq -s '.')
+  rm -rf "$chunk_dir"
+
   local blocks=$(jq -n \
     --arg title "$title" \
-    --arg body "$body_trunc" \
+    --argjson sections "$section_blocks" \
     --arg footer "_${title} by CareSpace PM AI via ClaudeHub — $today_" \
-    '[
-      {"type":"header","text":{"type":"plain_text","text":$title}},
-      {"type":"section","text":{"type":"mrkdwn","text":$body}},
-      {"type":"divider"},
-      {"type":"context","elements":[{"type":"mrkdwn","text":$footer}]}
-    ]')
+    '[{"type":"header","text":{"type":"plain_text","text":$title}}]
+     + $sections
+     + [{"type":"divider"},
+        {"type":"context","elements":[{"type":"mrkdwn","text":$footer}]}]')
 
   # Search for existing message today to update (idempotent)
   local oldest=$(date -d 'today 00:00' +%s 2>/dev/null || echo $(($(date +%s) - 86400)))
