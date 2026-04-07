@@ -42,10 +42,6 @@ export LIST_MASTER_BACKLOG="901326439232"
 export LIST_SPRINT_CANDIDATES="901326510572"
 export LIST_ALERTS="901326439234"
 export LIST_SPRINT_HISTORY="901326439238"
-export LIST_ACTIVE_DEALS="901326439255"
-export LIST_AT_RISK_DEALS="901326439258"
-export LIST_CONTENT_CAMPAIGNS="901326439261"
-export LIST_PRODUCT_LAUNCHES="901326439262"
 export LIST_ONBOARDING="901326439266"
 export LIST_SUPPORT_ESCALATIONS="901326439271"
 export SPRINT_TEMPLATE_LIST="901326512991"
@@ -60,14 +56,19 @@ export SP_FIELD_ID="1662e3e7-b018-47b7-8881-e30f6831c674"
 export SLACK_STANDUP="#pm-standup"
 export SLACK_SPRINT="#pm-sprint-board"
 export SLACK_ENGINEERING="#pm-engineering"
-export SLACK_ALERTS="#pm-alerts"
-export SLACK_GTM="#pm-gtm"
-export SLACK_EXEC="#pm-exec-updates"
-export SLACK_COMPLIANCE="#pm-compliance"
-export SLACK_CS="#pm-customer-success"
-export SLACK_OPS="#ops-general"
+
 # Allowed channels array for validation
-export SLACK_ALLOWED_CHANNELS="pm-standup pm-sprint-board pm-engineering pm-alerts pm-gtm pm-exec-updates pm-compliance pm-customer-success ops-general"
+export SLACK_ALLOWED_CHANNELS="pm-standup pm-sprint-board pm-engineering"
+
+# ── HUDDLE NOTES ──────────────────────────────────────────────────────
+# READ-ONLY source channels for huddle notes (never posted to — read only)
+# carespace-team is forbidden for posting but safe to READ for archival
+export HUDDLE_SOURCE_CHANNELS="pm-standup carespace-team"
+export HUDDLE_LOOKBACK_DAYS=7
+export HUDDLE_VAULT_REPO="carespace-ai/carespace-pm-vault"
+export HUDDLE_VAULT_PATH="huddles"
+export HUDDLE_MAX_PER_RUN=20
+export HUDDLE_MIN_CONTENT_CHARS=50
 
 # ── SPRINT RULES ──────────────────────────────────────────────────────
 export SPRINT_BUDGET_SP=48        # 60 default velocity * 0.80 buffer
@@ -121,19 +122,27 @@ export COMPLIANCE_REPO="FreitasCSpace/CareSpace-Compliance-Repo"
 cu_api() {
   local method="${1:-GET}" endpoint="$2" data="$3"
   local url="https://api.clickup.com/api/v2/$endpoint"
-  local args=(-s -X "$method" -H "Authorization: $CLICKUP_PERSONAL_TOKEN" -H "Content-Type: application/json")
+  local hdr=/tmp/.cu-hdr.$$
+  local args=(-sS -D "$hdr" -X "$method" \
+    -H "Authorization: $CLICKUP_PERSONAL_TOKEN" \
+    -H "Content-Type: application/json")
   [ -n "$data" ] && args+=(-d "$data")
 
-  for attempt in 1 2 3; do
+  for attempt in 1 2 3 4 5; do
     RESP=$(curl "${args[@]}" "$url" 2>/dev/null)
-    if echo "$RESP" | grep -q '"err".*"Rate limit'; then
-      sleep $((attempt * 2))
+    local code=$(awk 'NR==1{print $2}' "$hdr" 2>/dev/null)
+    if [ "$code" = "429" ] || echo "$RESP" | grep -q '"err".*"Rate limit'; then
+      local ra=$(awk 'tolower($1)=="retry-after:"{gsub("\r","",$2); print $2}' "$hdr")
+      [ -z "$ra" ] && ra=$((attempt * 5))
+      sleep "$ra"
       continue
     fi
+    rm -f "$hdr"
     echo "$RESP"
     return 0
   done
-  echo '{"error":"Rate limited after 3 retries"}'
+  rm -f "$hdr"
+  echo '{"error":"Rate limited after 5 retries"}'
   return 1
 }
 
@@ -208,6 +217,108 @@ slack_post() {
         '{channel:$ch,text:$text,blocks:$blocks}')" > /dev/null
     echo "POSTED new Slack message to $channel"
   fi
+}
+
+# ── Helper: Batch GitHub issue state check via GraphQL ──────────────
+# Usage: gh_batch_states <input_tsv:repo<TAB>num> <output_tsv:repo<TAB>num<TAB>state<TAB>url>
+# Uses GraphQL aliases — ~50 issues per API call. NOTFOUND = deleted/transferred/no access.
+gh_batch_states() {
+  local input="$1" out="$2"
+  local tmpmap=/tmp/.gh-batch-map.$$
+  : > "$out"; : > "$tmpmap"
+
+  local chunk=50 i=0 query="" batch=0
+  flush_batch() {
+    [ -z "$query" ] && return
+    local resp
+    resp=$(gh api graphql -f query="query{$query}" 2>/dev/null)
+    # Join alias results back to repo/num via map
+    echo "$resp" | jq -r '.data // {} | to_entries[] | [.key, ((.value.issue.state)//"NOTFOUND"), ((.value.issue.url)//"")] | @tsv' \
+      | awk -F'\t' -v map="$tmpmap" '
+          BEGIN { while ((getline l < map) > 0) { split(l,a,"\t"); m[a[1]]=a[2]"\t"a[3] } }
+          { print m[$1] "\t" $2 "\t" $3 }
+        ' >> "$out"
+    query=""; : > "$tmpmap"
+  }
+
+  while IFS=$'\t' read -r repo num; do
+    [ -z "$repo" ] || [ -z "$num" ] && continue
+    local owner="${repo%%/*}" name="${repo##*/}"
+    local alias="i${i}"
+    query+="  ${alias}: repository(owner:\"$owner\",name:\"$name\"){issue(number:$num){state url}}"$'\n'
+    printf '%s\t%s\t%s\n' "$alias" "$repo" "$num" >> "$tmpmap"
+    i=$((i+1)); batch=$((batch+1))
+    if [ $batch -ge $chunk ]; then flush_batch; batch=0; fi
+  done < "$input"
+  flush_batch
+  rm -f "$tmpmap"
+}
+
+# ── Helper: Upsert exactly ONE ClickUp-link bot comment on a GH issue ───
+# Usage: gh_upsert_clickup_comment <owner/repo> <issue_num> <clickup_url> [pri] [sp] [domain]
+#   pri:    1=Urgent 2=High 3=Normal 4=Low (omit → unknown)
+#   sp:     story points integer (omit → ?)
+#   domain: backend / frontend / mobile / etc. (omit → ?)
+# Contract: one bot comment per issue. Updates if body changed, dedupes extras.
+# Echoes: created | updated | nochange | deduped
+gh_upsert_clickup_comment() {
+  local repo="$1" num="$2" cu_url="$3" pri="${4:-}" sp="${5:-}" domain="${6:-}"
+  local marker="<!-- pm-bot:clickup-link v1 -->"
+
+  # Priority badge
+  local pri_label
+  case "$pri" in
+    1) pri_label="🔴 Urgent" ;;
+    2) pri_label="🟠 High"   ;;
+    3) pri_label="🟡 Normal" ;;
+    4) pri_label="⚪ Low"    ;;
+    *) pri_label="—"         ;;
+  esac
+
+  local sp_label="${sp:-?}"
+  [ "$sp_label" = "0" ] && sp_label="?"
+  local domain_label="${domain:-?}"
+
+  local body
+  body="${marker}
+📋 **Tracked in ClickUp:** ${cu_url}
+
+| | |
+|---|---|
+| Priority | ${pri_label} |
+| Story Points | ${sp_label} |
+| Domain | ${domain_label} |
+
+_Managed by CareSpace PM Bot — do not edit this comment._"
+
+  # Fetch all bot comments on this issue (paginate in case of many)
+  local comments
+  comments=$(gh api "repos/$repo/issues/$num/comments" --paginate 2>/dev/null \
+    | jq -s --arg m "$marker" '[.[] | .[] | select(.body | contains($m)) | {id, body}]')
+
+  local count=$(echo "$comments" | jq 'length')
+  local result="nochange"
+
+  if [ "$count" = "0" ]; then
+    gh api "repos/$repo/issues/$num/comments" -f body="$body" >/dev/null 2>&1 && result="created"
+  else
+    local first_id=$(echo "$comments" | jq -r '.[0].id')
+    local first_body=$(echo "$comments" | jq -r '.[0].body')
+
+    # Delete duplicates (keep first)
+    if [ "$count" -gt 1 ]; then
+      echo "$comments" | jq -r '.[1:][].id' | while read -r dup; do
+        [ -n "$dup" ] && gh api -X DELETE "repos/$repo/issues/comments/$dup" >/dev/null 2>&1
+      done
+      result="deduped"
+    fi
+
+    # Update body if ClickUp URL changed or body drifted
+    if [ "$first_body" != "$body" ]; then
+      gh api -X PATCH "repos/$repo/issues/comments/$first_id" -f body="$body" >/dev/null 2>&1 && result="updated"
+    fi
+  fi
+  echo "$result"
 }
 
 echo "PM context loaded — workspace $WORKSPACE_ID"

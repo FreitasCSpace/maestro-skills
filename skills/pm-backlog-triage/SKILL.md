@@ -10,10 +10,12 @@ description: Import GitHub issues into ClickUp backlog, deduplicate, normalize p
 ## GUARDRAILS
 - ⛔ SLACK: ONLY post to channels from context.sh ($SLACK_ENGINEERING, $SLACK_STANDUP, $SLACK_SPRINT, etc). If channel not found, FAIL — NEVER substitute another channel. NEVER post to #carespace-team, #general, #eng-general.
 - Delete ClickUp tasks whose linked GitHub issue no longer exists (404/closed) — no cap
-- Max per run: 50 creates, 50 SP updates
+- Max per run: 50 creates, 50 SP updates, 100 GH comment upserts
 - Only set SP on tasks with zero SP — never overwrite
 - Never set priority to urgent unless tagged security/compliance
-- Idempotency: `pm-bot-imported` tag prevents re-import of same issues
+- Idempotency:
+  - URL dedup prevents re-importing the same GH issue
+  - **GH bot comment is upserted, never appended** — exactly ONE bot comment per issue, marked `<!-- pm-bot:clickup-link v1 -->`. If the ClickUp URL changes, the existing comment is PATCHed. Duplicates are deleted.
 - **ALL API responses go to /tmp files. NEVER dump raw JSON into context.**
 
 ## STEP 0: Load Shared Context
@@ -49,80 +51,113 @@ cut -f1 /tmp/gh-issues.tsv | sort | uniq -c | sort -rn | head -10
 
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
-> /tmp/cu-backlog-raw.json
-PAGE=0
-while true; do
+> /tmp/cu-pages.ndjson
+PAGE=0; MAX_PAGES=20
+while [ $PAGE -lt $MAX_PAGES ]; do
   cu_api GET "list/$LIST_MASTER_BACKLOG/task?include_closed=false&subtasks=true&page=$PAGE" > /tmp/cu-page.json
   COUNT=$(jq '.tasks | length' /tmp/cu-page.json)
-  [ "$COUNT" = "0" ] && break
-  jq --arg cf "$SP_FIELD_ID" '.tasks[] | {id, name: .name[0:80], desc: (.description // "")[0:120], tags: [.tags[].name], pri: (.priority.priority // "4"), sp: ((.custom_fields[] | select(.id==$cf) | .value) // 0)}' /tmp/cu-page.json >> /tmp/cu-backlog-raw.json
+  [ "$COUNT" = "0" ] || [ "$COUNT" = "null" ] && break
+  cat /tmp/cu-page.json >> /tmp/cu-pages.ndjson
+  echo >> /tmp/cu-pages.ndjson
   PAGE=$((PAGE + 1))
+  [ "$COUNT" -lt 100 ] && break
   sleep 0.3
 done
 
-# Build URL index for dedup
-grep -oP 'https://github\.com/[^\s"]+' /tmp/cu-backlog-raw.json 2>/dev/null | sort -u > /tmp/cu-urls.txt
-# Check for pm-bot-imported tags
-jq -r 'select(.tags | any(. == "pm-bot-imported")) | .name' /tmp/cu-backlog-raw.json 2>/dev/null | sort -u > /tmp/cu-imported.txt
+# Aggregate all pages into one task array
+jq -s --arg cf "$SP_FIELD_ID" '
+  [ .[].tasks[] | {
+      id,
+      name: .name[0:80],
+      desc: (.description // ""),
+      tags: [.tags[].name],
+      pri: (.priority.priority // "4"),
+      sp: (((.custom_fields[]? | select(.id==$cf) | .value) // 0) | tostring),
+      age: (((now - ((.date_created|tonumber)/1000))/86400) | floor),
+      assignees: [.assignees[].username]
+  } ]' /tmp/cu-pages.ndjson > /tmp/cu-backlog.json
 
-echo "ClickUp backlog entries: $(wc -l < /tmp/cu-backlog-raw.json)"
+# Build URL index for dedup (parse desc field, not raw JSON)
+jq -r '.[].desc' /tmp/cu-backlog.json \
+  | grep -oP 'https://github\.com/[^/]+/[^/]+/issues/\d+' \
+  | sort -u > /tmp/cu-urls.txt
+
+echo "ClickUp backlog tasks: $(jq length /tmp/cu-backlog.json)"
 echo "Known GitHub URLs: $(wc -l < /tmp/cu-urls.txt)"
-echo "Already imported: $(wc -l < /tmp/cu-imported.txt)"
 ```
 
-### Step 3: Validate GitHub Issues in ClickUp → /tmp/stale-issues-log.txt
+### Step 3: Batch-Validate GH↔CU Links (GraphQL) → /tmp/stale-issues-log.txt
 
-Check each ClickUp backlog task that has a GitHub URL in its description. If the GitHub issue no longer exists (404) or is closed, delete the ClickUp task.
+Build the canonical CU↔GH map from Step 2's cache (includes pri/sp/domain for rich comments).
+Use **GraphQL batch** (~50 issues per API call).
+- GH issue **404/NOTFOUND** → DELETE CU task (it's a ghost)
+- GH issue **CLOSED** → set CU status to `closed` (keeps history, doesn't delete)
 
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
 > /tmp/stale-issues-log.txt
-DELETED=0; VALID=0
+# cu-gh-map.tsv: cu_id<TAB>repo<TAB>num<TAB>cu_url<TAB>pri<TAB>sp<TAB>domain
+> /tmp/cu-gh-map.tsv
+> /tmp/gh-check-input.tsv
+DELETED=0; CLOSED_CU=0
 
-# Re-fetch backlog with descriptions to extract GitHub URLs
-cu_api GET "list/$LIST_MASTER_BACKLOG/task?include_closed=false&subtasks=true&page=0" \
-  | jq '[.tasks[] | {id, name: .name[0:80], desc: (.description // "")}]' \
-  > /tmp/cu-backlog-check.json
+# Extract CU task → GH map, include pri/sp/domain for downstream rich comments
+jq -r '
+  .[] | . as $t
+  | ($t.desc | scan("https://github\\.com/([^/]+/[^/]+)/issues/([0-9]+)")) as $m
+  | [ $t.id, $m[0], $m[1],
+      "https://app.clickup.com/t/\($t.id)",
+      ($t.pri // "4"),
+      ($t.sp  // "0"),
+      (($t.tags | map(select(. == "frontend" or . == "backend" or . == "mobile"
+                             or . == "infra" or . == "ai-cv" or . == "sdk"
+                             or . == "bots" or . == "video")) | first) // "other")
+    ]
+  | @tsv
+' /tmp/cu-backlog.json > /tmp/cu-gh-map.tsv
 
-TOTAL_CHECK=$(jq length /tmp/cu-backlog-check.json)
-echo "Checking $TOTAL_CHECK backlog tasks for stale GitHub issues..."
+awk -F'\t' '{print $2"\t"$3}' /tmp/cu-gh-map.tsv | sort -u > /tmp/gh-check-input.tsv
+TOTAL_CHECK=$(wc -l < /tmp/gh-check-input.tsv)
+echo "Batch-checking $TOTAL_CHECK unique GH issues via GraphQL..."
 
-for row in $(jq -r '.[] | @base64' /tmp/cu-backlog-check.json); do
-  ID=$(echo "$row"|base64 -d|jq -r '.id')
-  NAME=$(echo "$row"|base64 -d|jq -r '.name')
-  DESC=$(echo "$row"|base64 -d|jq -r '.desc')
+# /tmp/gh-states.tsv: repo<TAB>num<TAB>state<TAB>url
+gh_batch_states /tmp/gh-check-input.tsv /tmp/gh-states.tsv
 
-  # Extract GitHub issue URL from description
-  GH_URL=$(echo "$DESC" | grep -oP 'https://github\.com/[^/]+/[^/]+/issues/\d+' | head -1)
-  [ -z "$GH_URL" ] && continue
+# Split into: ghosts (404) and closed (done on GH)
+awk -F'\t' '
+  NR==FNR { st[$1"|"$2]=$3; next }
+  {
+    key=$2"|"$3; s=st[key]
+    if (s=="" || s=="NOTFOUND") print $0 > "/tmp/cu-ghost.tsv"
+    else if (s=="CLOSED")       print $0 > "/tmp/cu-closed.tsv"
+  }
+' /tmp/gh-states.tsv /tmp/cu-gh-map.tsv
 
-  # Extract owner/repo#number from URL
-  GH_REPO=$(echo "$GH_URL" | grep -oP 'github\.com/\K[^/]+/[^/]+')
-  GH_NUM=$(echo "$GH_URL" | grep -oP 'issues/\K\d+')
+# Hard-delete ghost tasks (GH issue no longer exists)
+while IFS=$'\t' read -r cu_id repo num rest; do
+  cu_api DELETE "task/$cu_id" > /dev/null
+  echo "DELETED (ghost): $cu_id → $repo#$num" >> /tmp/stale-issues-log.txt
+  DELETED=$((DELETED+1)); sleep 0.2
+done < /tmp/cu-ghost.tsv
 
-  # Check if issue still exists and is open
-  ISSUE_STATE=$(gh issue view "$GH_NUM" --repo "$GH_REPO" --json state --jq '.state' 2>/dev/null)
+# Close CU tasks for issues closed on GitHub (preserve history)
+while IFS=$'\t' read -r cu_id repo num rest; do
+  cu_api PUT "task/$cu_id" '{"status":"closed"}' > /dev/null
+  echo "CLOSED (gh-closed): $cu_id → $repo#$num" >> /tmp/stale-issues-log.txt
+  CLOSED_CU=$((CLOSED_CU+1)); sleep 0.2
+done < /tmp/cu-closed.tsv
 
-  if [ -z "$ISSUE_STATE" ]; then
-    # 404 — issue doesn't exist
-    cu_api DELETE "task/$ID" > /dev/null
-    echo "DELETED (404): $NAME → $GH_URL" >> /tmp/stale-issues-log.txt
-    DELETED=$((DELETED+1))
-  elif [ "$ISSUE_STATE" = "CLOSED" ]; then
-    # Issue was closed on GitHub
-    cu_api DELETE "task/$ID" > /dev/null
-    echo "DELETED (closed): $NAME → $GH_URL" >> /tmp/stale-issues-log.txt
-    DELETED=$((DELETED+1))
-  else
-    VALID=$((VALID+1))
-  fi
-
-  sleep 0.3
-done
-
+TOTAL_MAP=$(wc -l < /tmp/cu-gh-map.tsv)
+VALID=$(( TOTAL_MAP - DELETED - CLOSED_CU ))
 echo "=== Stale Issue Cleanup ===" >> /tmp/stale-issues-log.txt
-echo "Checked: $TOTAL_CHECK | Valid: $VALID | Deleted: $DELETED" >> /tmp/stale-issues-log.txt
+echo "Mapped: $TOTAL_MAP | Valid: $VALID | Closed: $CLOSED_CU | Deleted: $DELETED" >> /tmp/stale-issues-log.txt
 cat /tmp/stale-issues-log.txt
+
+# Remove ghost + closed tasks from the live map (don't backfill comments on dead tasks)
+cat /tmp/cu-ghost.tsv /tmp/cu-closed.tsv 2>/dev/null \
+  | awk -F'\t' 'NR==FNR{skip[$1]=1; next} !skip[$1]' - /tmp/cu-gh-map.tsv \
+  > /tmp/cu-gh-map.live.tsv
+mv /tmp/cu-gh-map.live.tsv /tmp/cu-gh-map.tsv
 ```
 
 ### Step 4: Import New Issues → /tmp/import-log.txt
@@ -179,17 +214,26 @@ while IFS=$'\t' read -r repo num title url label domain; do
 
   RES=$(cu_api POST "list/$LIST_MASTER_BACKLOG/task" "$PAYLOAD" | jq -r '.id // "ERROR"')
 
-  # Set SP via custom field
+  # Set SP via custom field, assign lead, post bot comment on GH issue
+  CMT="skipped"
   if [ "$RES" != "ERROR" ] && [ -n "$RES" ]; then
     cu_api POST "task/$RES/field/$SP_FIELD_ID" "{\"value\":$SP}" > /dev/null
 
-    # Assign domain lead if available
     if [ -n "$LEAD" ]; then
-      cu_api POST "task/$RES" "{\"assignees\":{\"add\":[$LEAD]}}" > /dev/null
+      ASSIGN_PAYLOAD=$(jq -n --argjson uid "$LEAD" '{assignees:{add:[$uid]}}')
+      cu_api PUT "task/$RES" "$ASSIGN_PAYLOAD" > /dev/null
     fi
+
+    # Post the canonical bot comment on the GH issue (rich format)
+    CU_URL="https://app.clickup.com/t/$RES"
+    CMT=$(gh_upsert_clickup_comment "$GITHUB_ORG/$repo" "$num" "$CU_URL" "$PRI" "$SP" "$domain")
+    # Track the new pair for downstream backfill (skips it in Step 5 — already handled)
+    printf '%s\t%s/%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$RES" "$GITHUB_ORG" "$repo" "$num" "$CU_URL" "$PRI" "$SP" "$domain" \
+      >> /tmp/cu-gh-map.tsv
   fi
 
-  echo "IMPORT $repo#$num → $RES (pri=$PRI, sp=$SP, domain=$domain)" >> /tmp/import-log.txt
+  echo "IMPORT $repo#$num → $RES (pri=$PRI, sp=$SP, domain=$domain, gh-comment=$CMT)" >> /tmp/import-log.txt
   COUNT=$((COUNT+1)); IMPORTED=$((IMPORTED+1)); sleep 0.3
 done < /tmp/new-issues.tsv
 
@@ -197,17 +241,49 @@ echo "Imported: $IMPORTED" >> /tmp/import-log.txt
 cat /tmp/import-log.txt
 ```
 
-### Step 5: Estimate Missing SP → /tmp/sp-log.txt
+### Step 5: Backfill / Repair GH Bot Comments → /tmp/comment-log.txt
+
+For every CU↔GH pair (live, post-cleanup), ensure the GH issue has **exactly one** bot comment pointing to the **current** ClickUp URL. Fixes invalid links from previous runs and dedupes any stragglers.
+
+```bash
+source ~/.claude/skills/_pm-shared/context.sh
+> /tmp/comment-log.txt
+CREATED=0; UPDATED=0; DEDUPED=0; NOCHANGE=0; MAX_COMMENTS=100
+
+# cu-gh-map.tsv format: cu_id<TAB>repo<TAB>num<TAB>cu_url<TAB>pri<TAB>sp<TAB>domain
+# `repo` is always "owner/name" — Step 3 extraction and Step 4 import both write full path
+COUNT=0
+while IFS=$'\t' read -r cu_id repo num cu_url pri sp domain; do
+  [ $COUNT -ge $MAX_COMMENTS ] && echo "HIT MAX_COMMENTS=$MAX_COMMENTS" >> /tmp/comment-log.txt && break
+  [ -z "$cu_id" ] || [ -z "$num" ] && continue
+
+  result=$(gh_upsert_clickup_comment "$repo" "$num" "$cu_url" "$pri" "$sp" "$domain")
+  echo "$result $full_repo#$num → $cu_url" >> /tmp/comment-log.txt
+  case "$result" in
+    created)  CREATED=$((CREATED+1)) ;;
+    updated)  UPDATED=$((UPDATED+1)) ;;
+    deduped)  DEDUPED=$((DEDUPED+1)) ;;
+    nochange) NOCHANGE=$((NOCHANGE+1)) ;;
+  esac
+  COUNT=$((COUNT+1))
+  sleep 0.2
+done < /tmp/cu-gh-map.tsv
+
+echo "=== Comment Sync ===" >> /tmp/comment-log.txt
+echo "created=$CREATED updated=$UPDATED deduped=$DEDUPED nochange=$NOCHANGE" >> /tmp/comment-log.txt
+tail -3 /tmp/comment-log.txt
+```
+
+### Step 6: Estimate Missing SP → /tmp/sp-log.txt
 
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
 > /tmp/sp-log.txt
 
-# Fetch tasks with no SP
-cu_api GET "list/$LIST_MASTER_BACKLOG/task?include_closed=false&subtasks=true&page=0" \
-  | jq --arg cf "$SP_FIELD_ID" \
-    '[.tasks[] | {id, name: .name[0:60], tags: [.tags[].name], sp: ((.custom_fields[] | select(.id==$cf) | .value) // 0)} | select(.sp == 0 or .sp == null)]' \
-  > /tmp/no-sp.json
+# Reuse backlog from Step 2 — ClickUp returns SP as a STRING; coerce before compare
+jq '[.[] | select((.sp|tostring) == "0" or (.sp|tostring) == "" or .sp == null)
+       | {id, name: .name[0:60], tags}]' \
+  /tmp/cu-backlog.json > /tmp/no-sp.json
 
 TOTAL=$(jq length /tmp/no-sp.json)
 echo "Tasks missing SP: $TOTAL" | tee /tmp/sp-log.txt
@@ -219,16 +295,16 @@ for row in $(jq -r '.[] | @base64' /tmp/no-sp.json); do
   NAME=$(echo "$row"|base64 -d|jq -r '.name')
   TAGS=$(echo "$row"|base64 -d|jq -r '.tags|join(",")')
 
-  # SP estimation heuristic from context.py
+  # SP estimation heuristic — first match wins, no overwrites
   SP=2  # default
   case "$TAGS" in
     *security*|*compliance*) SP=8;;
     *bug*)
-      echo "$NAME" | grep -qiE "critical|crash|data.loss" && SP=8 || SP=5;;
+      if echo "$NAME" | grep -qiE "critical|crash|data.loss"; then SP=8; else SP=5; fi;;
     *feature*|*enhancement*)
-      echo "$NAME" | grep -qiE "refactor|rewrite|migrate|redesign" && SP=21
-      echo "$NAME" | grep -qiE "add|create|new|implement" && SP=13
-      [ $SP -eq 2 ] && SP=5;;
+      if   echo "$NAME" | grep -qiE "refactor|rewrite|migrate|redesign"; then SP=21
+      elif echo "$NAME" | grep -qiE "add|create|new|implement";          then SP=13
+      else SP=5; fi;;
     *infra*|*ci*|*config*) SP=3;;
   esac
 
@@ -241,14 +317,14 @@ echo "SP set: $COUNT" >> /tmp/sp-log.txt
 tail -5 /tmp/sp-log.txt
 ```
 
-### Step 6: Triage Report → /tmp/triage-report.md
+### Step 7: Triage Report → /tmp/triage-report.md
 
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
 
-cu_api GET "list/$LIST_MASTER_BACKLOG/task?include_closed=false&subtasks=true&page=0" \
-  | jq '[.tasks[] | {name: .name[0:60], pri: (.priority.priority//"4"), assignees: ([.assignees[].username]|join(",")), age: (((now-(.date_created/1000))/86400)|floor), tags: [.tags[].name]}]' \
-  > /tmp/triage.json
+# Reuse the paginated backlog cache from Step 2 (already has age + assignees)
+jq '[.[] | {name, pri, assignees: (.assignees|join(",")), age, tags}]' \
+  /tmp/cu-backlog.json > /tmp/triage.json
 
 TOTAL=$(jq length /tmp/triage.json)
 BUGS=$(jq '[.[]|select(.tags|any(.=="bug"))]|length' /tmp/triage.json)
@@ -269,8 +345,10 @@ cat > /tmp/triage-report.md << REOF
 - **Priority:** Urgent=$URG High=$HIGH Normal=$NORM Low=$LOW
 
 ## Actions Taken
-$(cat /tmp/import-log.txt | tail -3)
+$(tail -3 /tmp/import-log.txt)
+$(tail -1 /tmp/comment-log.txt)
 $(tail -1 /tmp/sp-log.txt)
+$(tail -1 /tmp/stale-issues-log.txt)
 
 ## Needs Attention
 - Unassigned >7d: $UNASSIGNED
@@ -283,7 +361,7 @@ REOF
 cat /tmp/triage-report.md
 ```
 
-### Step 7: Post to Slack
+### Step 8: Post to Slack
 
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
