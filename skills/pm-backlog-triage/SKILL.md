@@ -45,6 +45,7 @@ Execute steps **one at a time** in order.
 | 4 | [steps/step-4-import-new-issues.md](steps/step-4-import-new-issues.md) | Import new GH issues with `[TYPE]` naming + type tag |
 | 4.5 | [steps/step-4.5-normalize-imports.md](steps/step-4.5-normalize-imports.md) | Rename legacy `[carespace-*]` imports to `[TYPE]` + add type tag |
 | 5 | [steps/step-5-backfill-gh-comments.md](steps/step-5-backfill-gh-comments.md) | Backfill/repair bot comments on all live GH issues |
+| 5.5 | [steps/step-5.5-sweep-dead-gh-comments.md](steps/step-5.5-sweep-dead-gh-comments.md) | Delete GH bot comments pointing to dead ClickUp tasks |
 | 6 | [steps/step-6-estimate-sp.md](steps/step-6-estimate-sp.md) | Estimate SP for tasks missing it |
 | 7 | [steps/step-7-triage-report.md](steps/step-7-triage-report.md) | Build triage health report → /tmp/triage-report.md |
 | 8 | [steps/step-8-post-slack.md](steps/step-8-post-slack.md) | Post report to Slack |
@@ -72,6 +73,8 @@ Execute steps **one at a time** in order.
 | /tmp/bad-named.tsv | Step 4.5 | Step 4.5 (intermediate) |
 | /tmp/normalize-log.txt | Step 4.5 | Step 7 |
 | /tmp/comment-log.txt | Step 5 | Step 7 |
+| /tmp/sweep-candidates.tsv | Step 5.5 | Step 5.5 (intermediate) |
+| /tmp/sweep-log.txt | Step 5.5 | Step 7 |
 | /tmp/parent-ids.json | Step 6 | Step 6 (intermediate) |
 | /tmp/no-sp-leaves.json | Step 6 | Step 6 (intermediate) |
 | /tmp/cu-rollup.json | Step 6 | Step 6 (intermediate) |
