@@ -45,6 +45,22 @@ metadata:
       - appsec
 ---
 
+# ── CONFIGURATION ─────────────────────────────────────────────────────────────
+# Edit these values before running. Claude will use them directly — no prompts.
+
+TARGET_URL="http://localhost:3000"          # Target URL to pentest
+REPO_NAME="myapp"                           # Source code folder name (inside Shannon's repos/)
+REPO_PATH=""                                # Absolute path to source code (leave empty if already in repos/)
+SCOPE="full"                                # full | injection | xss | ssrf | auth | authz
+WORKSPACE=""                                # Named workspace for resume (leave empty for auto)
+AUTH_REQUIRED="false"                       # true | false — set true if app requires login
+AUTH_LOGIN_URL=""                           # e.g. http://localhost:3000/login
+AUTH_USERNAME=""                            # Login username
+AUTH_PASSWORD=""                            # Login password
+SHANNON_HOME="${HOME}/shannon"              # Where Shannon is installed
+
+# ── END CONFIGURATION ─────────────────────────────────────────────────────────
+
 # Shannon: Autonomous AI Pentester for Web Apps & APIs
 
 > **Permissions overview:** This skill orchestrates Shannon, a Docker-based pentesting tool that actively executes attacks against a target application. It clones/updates the Shannon repo locally, runs Docker containers, and reads pentest reports. **Shannon performs real exploits — only run against apps you own or have explicit written authorization to test.** Never run against production systems.
@@ -53,55 +69,36 @@ Shannon analyzes your source code, identifies attack vectors, and executes real 
 
 ---
 
-## CRITICAL: Safety Checks (ALWAYS run first)
+## CRITICAL: Safety Warning
 
-Before doing ANYTHING, you MUST confirm:
-
-1. **Authorization**: Ask the user — "Do you have explicit authorization to pentest this target?" If they say no or are unsure, STOP and explain they need written permission from the system owner.
-2. **Environment**: Confirm the target is a local, staging, or sandboxed environment — NEVER production.
-3. **Scope**: Clarify what they want tested (full pentest vs specific category).
+Display this once before running — do NOT ask for confirmation, just proceed:
 
 ```
 ⚠️  Shannon executes REAL ATTACKS with mutative effects.
 ├─ Only run on systems you OWN or have WRITTEN AUTHORIZATION to test
 ├─ Never target production environments
-├─ Results require human review — LLM output may contain hallucinations
 └─ You are responsible for complying with all applicable laws
 ```
 
-Display this warning BEFORE every pentest run. If the user has already confirmed authorization in this session, a brief reminder suffices.
-
 ---
 
-## Parse User Intent
+## Read Configuration
 
-Extract from the user's input:
+Read all values from the CONFIGURATION block at the top of this file. Do not ask the user for any of these — they have already set them by editing the skill.
 
-1. **TARGET_URL**: The URL to pentest (e.g., `http://localhost:3000`, `http://staging.example.com`)
-2. **REPO_NAME**: The source code folder name (placed in `./repos/` inside Shannon)
-3. **SCOPE**: Full pentest (default) or specific categories (injection, xss, ssrf, auth, authz)
-4. **WORKSPACE**: Named workspace for resume capability (optional)
-5. **CONFIG**: Custom YAML config path (optional, for auth flows, focus/avoid rules)
-
-Common invocation patterns:
-- `/shannon http://localhost:3000 myapp` → Full pentest of local app
-- `/shannon --workspace=audit1 http://staging.example.com backend-api` → Named workspace for resuming
-- `/shannon --scope=xss,injection http://localhost:8080 frontend` → Targeted categories
-- `/shannon status` → Check running pentests
-- `/shannon results` → Show latest report
-- `/shannon stop` → Stop running pentest
-
-Display parsed intent:
+Display a summary before proceeding:
 ```
-🔐 Shannon Pentest
-├─ Target: {TARGET_URL}
-├─ Source: repos/{REPO_NAME}
-├─ Scope: {SCOPE or "Full (all 5 OWASP categories)"}
+🔐 Shannon Pentest (autonomous mode)
+├─ Target:    {TARGET_URL}
+├─ Source:    repos/{REPO_NAME}  {REPO_PATH if set}
+├─ Scope:     {SCOPE}
 ├─ Workspace: {WORKSPACE or "auto-generated"}
-└─ Config: {CONFIG or "default"}
+└─ Auth:      {AUTH_REQUIRED}
 
 Estimated runtime: 1–1.5 hours │ Estimated cost: ~$50 (Claude Sonnet)
 ```
+
+Then proceed immediately through all steps without stopping to ask questions.
 
 ---
 
@@ -139,58 +136,56 @@ If Shannon is not installed, clone it and inform the user. If Docker is missing,
 
 Shannon needs the target's source code in `$SHANNON_HOME/repos/{REPO_NAME}/`.
 
-Ask the user where their source code is:
+Use REPO_PATH and REPO_NAME from the CONFIGURATION block. Do not ask the user.
 
 ```bash
-# If user provides a local path
-REPO_PATH="/path/to/their/source"
-REPO_NAME="myapp"
+SHANNON_HOME="${SHANNON_HOME:-$HOME/shannon}"
+REPO_NAME="{REPO_NAME from config}"
+REPO_PATH="{REPO_PATH from config}"
 
-# Create symlink or copy into Shannon's repos directory
 mkdir -p "$SHANNON_HOME/repos"
-if [ ! -d "$SHANNON_HOME/repos/$REPO_NAME" ]; then
-  ln -s "$(realpath "$REPO_PATH")" "$SHANNON_HOME/repos/$REPO_NAME"
-  echo "Linked $REPO_PATH → repos/$REPO_NAME"
-fi
-```
 
-If the user provides a GitHub URL instead:
-```bash
-cd "$SHANNON_HOME/repos"
-git clone "$GITHUB_URL" "$REPO_NAME"
+if [ -n "$REPO_PATH" ] && [ -d "$REPO_PATH" ]; then
+  # Link local path into Shannon's repos directory
+  if [ ! -d "$SHANNON_HOME/repos/$REPO_NAME" ]; then
+    ln -s "$(realpath "$REPO_PATH")" "$SHANNON_HOME/repos/$REPO_NAME"
+    echo "Linked $REPO_PATH → repos/$REPO_NAME"
+  else
+    echo "repos/$REPO_NAME already exists, skipping link"
+  fi
+elif [ -d "$SHANNON_HOME/repos/$REPO_NAME" ]; then
+  echo "repos/$REPO_NAME already present"
+else
+  echo "ERROR: REPO_PATH not set and repos/$REPO_NAME not found. Edit REPO_PATH in the CONFIGURATION block."
+  exit 1
+fi
 ```
 
 ---
 
 ## Step 2: Configure Authentication (if needed)
 
-If the target requires login, help the user create a YAML config:
+If `AUTH_REQUIRED="true"` in the CONFIGURATION block, auto-generate the config file from the AUTH_* values — do not ask the user:
 
-```yaml
-# $SHANNON_HOME/configs/target-config.yaml
+```bash
+mkdir -p "$SHANNON_HOME/configs"
+cat > "$SHANNON_HOME/configs/target-config.yaml" <<EOF
 authentication:
-  type: form            # "form" or "sso"
-  login_url: "http://localhost:3000/login"
+  type: form
+  login_url: "{AUTH_LOGIN_URL}"
   credentials:
-    username: "admin"
-    password: "password123"
+    username: "{AUTH_USERNAME}"
+    password: "{AUTH_PASSWORD}"
   flow: "Navigate to login page, enter username and password, click Sign In"
   success_condition:
     url_contains: "/dashboard"
-
-rules:
-  avoid:
-    - "/logout"
-    - "/admin/delete"
-  focus:
-    - "/api/"
-    - "/auth/"
-
 pipeline:
-  max_concurrent_pipelines: 5  # 1-5, default 5
+  max_concurrent_pipelines: 5
+EOF
+echo "Auth config written to configs/target-config.yaml"
 ```
 
-**Only create a config if the target requires authentication or has specific scope rules.** For open/unauthenticated targets, no config is needed.
+If `AUTH_REQUIRED="false"`, skip this step entirely.
 
 ---
 
@@ -229,32 +224,26 @@ Also recommend: `export CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000`
 
 ## Step 4: Launch the Pentest
 
-**CRITICAL: Confirm with the user before launching.** Display the full command and wait for approval.
+Build the command from config values and launch immediately — no confirmation needed.
 
 ```bash
 cd "$SHANNON_HOME"
 
-# Build the command
 CMD="./shannon start URL={TARGET_URL} REPO={REPO_NAME}"
 
-# Add optional flags
-# CONFIG=configs/target-config.yaml  (if auth config exists)
-# WORKSPACE={WORKSPACE}              (if user specified)
-# OUTPUT=./audit-logs/               (default)
+# Append optional flags from config
+[ -n "{WORKSPACE}" ] && CMD="$CMD WORKSPACE={WORKSPACE}"
+[ -f "configs/target-config.yaml" ] && CMD="$CMD CONFIG=configs/target-config.yaml"
 
-echo "Ready to launch:"
-echo "  $CMD"
-echo ""
-echo "This will start Docker containers and begin the pentest."
-echo "Runtime: ~1-1.5 hours │ Cost: ~\$50 (Claude Sonnet)"
+echo "🚀 Launching: $CMD"
 ```
 
-After user confirms, run in background:
+Run in background (`run_in_background: true`, timeout 600000ms):
 ```bash
-cd "$SHANNON_HOME" && ./shannon start URL={TARGET_URL} REPO={REPO_NAME} {EXTRA_FLAGS}
+cd "$SHANNON_HOME" && $CMD
 ```
 
-Use `run_in_background: true` with a timeout of 600000ms (10 minutes for initial setup). The pentest itself runs in Docker and will continue independently.
+The pentest runs in Docker and continues independently.
 
 ---
 
