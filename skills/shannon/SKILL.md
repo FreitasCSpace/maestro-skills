@@ -49,8 +49,8 @@ metadata:
 # Edit these values before running. Claude will use them directly — no prompts.
 
 TARGET_URL="http://localhost:3000"          # Target URL to pentest
-REPO_NAME="myapp"                           # Source code folder name (inside Shannon's repos/)
-REPO_PATH=""                                # Absolute path to source code (leave empty if already in repos/)
+REPO_GITHUB="owner/repo"                    # GitHub repo to clone (e.g. carespace-ai/backend)
+REPO_NAME="myapp"                           # Folder name inside Shannon's repos/ (derived from REPO_GITHUB if left empty)
 SCOPE="full"                                # full | injection | xss | ssrf | auth | authz
 WORKSPACE=""                                # Named workspace for resume (leave empty for auto)
 AUTH_REQUIRED="false"                       # true | false — set true if app requires login
@@ -90,7 +90,7 @@ Display a summary before proceeding:
 ```
 🔐 Shannon Pentest (autonomous mode)
 ├─ Target:    {TARGET_URL}
-├─ Source:    repos/{REPO_NAME}  {REPO_PATH if set}
+├─ Repo:      {REPO_GITHUB} → repos/{REPO_NAME}
 ├─ Scope:     {SCOPE}
 ├─ Workspace: {WORKSPACE or "auto-generated"}
 └─ Auth:      {AUTH_REQUIRED}
@@ -132,33 +132,28 @@ If Shannon is not installed, clone it and inform the user. If Docker is missing,
 
 ---
 
-## Step 1: Prepare Source Code
+## Step 1: Fetch Source Code via gh CLI
 
-Shannon needs the target's source code in `$SHANNON_HOME/repos/{REPO_NAME}/`.
-
-Use REPO_PATH and REPO_NAME from the CONFIGURATION block. Do not ask the user.
+Use `REPO_GITHUB` and `REPO_NAME` from the CONFIGURATION block. Do not ask the user.
+If `REPO_NAME` is empty, derive it from the last segment of `REPO_GITHUB`.
 
 ```bash
 SHANNON_HOME="${SHANNON_HOME:-$HOME/shannon}"
-REPO_NAME="{REPO_NAME from config}"
-REPO_PATH="{REPO_PATH from config}"
+REPO_GITHUB="{REPO_GITHUB from config}"                      # e.g. carespace-ai/backend
+REPO_NAME="${REPO_NAME:-$(echo "$REPO_GITHUB" | cut -d/ -f2)}"  # derive from repo slug if blank
 
 mkdir -p "$SHANNON_HOME/repos"
+cd "$SHANNON_HOME/repos"
 
-if [ -n "$REPO_PATH" ] && [ -d "$REPO_PATH" ]; then
-  # Link local path into Shannon's repos directory
-  if [ ! -d "$SHANNON_HOME/repos/$REPO_NAME" ]; then
-    ln -s "$(realpath "$REPO_PATH")" "$SHANNON_HOME/repos/$REPO_NAME"
-    echo "Linked $REPO_PATH → repos/$REPO_NAME"
-  else
-    echo "repos/$REPO_NAME already exists, skipping link"
-  fi
-elif [ -d "$SHANNON_HOME/repos/$REPO_NAME" ]; then
-  echo "repos/$REPO_NAME already present"
+if [ -d "$REPO_NAME/.git" ]; then
+  echo "Updating $REPO_NAME..."
+  git -C "$REPO_NAME" pull --ff-only
 else
-  echo "ERROR: REPO_PATH not set and repos/$REPO_NAME not found. Edit REPO_PATH in the CONFIGURATION block."
-  exit 1
+  echo "Cloning $REPO_GITHUB → repos/$REPO_NAME ..."
+  gh repo clone "$REPO_GITHUB" "$REPO_NAME"
 fi
+
+echo "✅ Source ready at repos/$REPO_NAME"
 ```
 
 ---
