@@ -48,8 +48,8 @@ metadata:
 # ── CONFIGURATION ─────────────────────────────────────────────────────────────
 # Edit these values before running. Claude will use them directly — no prompts.
 
-TARGET_URL="http://localhost:3000"          # Target URL to pentest
-REPO_GITHUB="owner/repo"                    # GitHub repo to clone (e.g. carespace-ai/backend)
+TARGET_URL="https://theoracle.carespace.ai"          # Target URL to pentest
+REPO_GITHUB="FreitasCSpace/carespace-bmad-workflow"                    # GitHub repo to clone (e.g. carespace-ai/backend)
 REPO_NAME="myapp"                           # Folder name inside Shannon's repos/ (derived from REPO_GITHUB if left empty)
 SCOPE="full"                                # full | injection | xss | ssrf | auth | authz
 WORKSPACE=""                                # Named workspace for resume (leave empty for auto)
