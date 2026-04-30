@@ -68,26 +68,26 @@ pre-loaded into context. Use `ToolSearch` to load tools when you need them.
 
 ---
 
-## CareSpace Codebase Context (READ THIS FIRST)
+## CareSpace Codebase Context (DEFERRED — read after Phase 0.5)
 
-Before doing ANYTHING — even before parsing the task — read the CareSpace
-codebase context. **This file is your map.**
+`~/.claude/skills/oracle-pipeline/CARESPACE_CONTEXT.md` is ~47KB. Reading
+the whole file up front blows the context budget on information for repos
+the current project doesn't touch. **Do NOT `cat` it at startup.**
 
-```bash
-cat ~/.claude/skills/oracle-pipeline/CARESPACE_CONTEXT.md
-```
+The read is deferred to **Phase 0.5b** (after BMAD context loads and
+`involved_repos` is known), and is **scoped to only the relevant repo
+sections**. See Phase 0.5b below.
 
-You read this file ONCE per session. Never read it again.
+When you do read the scoped extract, use it to:
 
-After reading, use it to:
-
-1. **Identify each target repo before cloning** — `feature-intent.json`'s
-   `involved_repos[].full_name` lists every repo the project touches. Match
-   each to the Repository Map.
-2. **Use the per-repo "Where to look by issue type" tables** to jump directly
-   to the relevant folder for each story's affected modules.
+1. **Match each target repo to its Repository Map row** — stack, default
+   branch, build commands.
+2. **Use the per-repo "Where to look by issue type" tables** to jump
+   directly to the relevant folder for each story's affected modules.
 3. **Check the HIPAA notes** before touching any file that handles PHI
    (Profile, Client, Evaluation, Survey, etc).
+
+You read the scoped extract ONCE per project run. Never re-read.
 
 ---
 
@@ -96,7 +96,8 @@ After reading, use it to:
 ### 1. Never re-read a file you already read
 Once read, the file is in your context. Don't re-read unless modified or the
 user asks. Applies to:
-- `CARESPACE_CONTEXT.md` (read ONCE at start)
+- `context-scoped.md` (built once in Phase 0.5b, read ONCE)
+- `CARESPACE_CONTEXT.md` full file — DO NOT read; use the scoped extract
 - The anchor issue body (`gh issue view` ONCE)
 - `feature-intent.json`, `stories-output.md`, `architecture.md`, `prd.md`,
   `front-end-spec.md` (read ONCE at start)
@@ -284,6 +285,41 @@ The story IDs in `stories-output.md` are the BMAD ordering source. The
 GitHub user-story issues from 0.3 are matched to them by title text or by
 an explicit `story:N.M` label if BMAD writes one. If neither matches: log a
 warning to PIPELINE.md but proceed using the BMAD ordering.
+
+### 0.5b Read CARESPACE_CONTEXT scoped to involved_repos
+
+Now that `involved_repos` is known, extract ONLY the sections of
+`CARESPACE_CONTEXT.md` matching those repos plus the always-needed
+top-of-file architecture overview. Skip everything else.
+
+```bash
+CTX=~/.claude/skills/oracle-pipeline/CARESPACE_CONTEXT.md
+SCOPED=/tmp/oracle-work/context-scoped.md
+
+# Always include the prologue (everything before the first per-repo section)
+awk '/^## carespace-/{exit} {print}' "$CTX" > "$SCOPED"
+
+# Append each involved repo's section (## carespace-X up to the next ## carespace-)
+for REPO in "${INVOLVED_REPOS[@]}"; do
+  awk -v r="## $REPO" '
+    $0 ~ "^"r" " || $0 == r {p=1}
+    p && /^## carespace-/ && $0 !~ "^"r" " && $0 != r {p=0}
+    p {print}
+  ' "$CTX" >> "$SCOPED"
+done
+
+wc -c "$SCOPED"  # expect ~5–10KB instead of 47KB
+cat "$SCOPED"
+```
+
+Read the scoped output ONCE. Do NOT read the full
+`CARESPACE_CONTEXT.md` — the extract is sufficient and the full file
+will exhaust the context budget on irrelevant repos.
+
+If `wc -c` on the scoped extract is < 1000 bytes, the awk match probably
+failed (repo names in `involved_repos` don't match the `## carespace-X`
+section headers). In that case, fall back to reading the full file via
+the Read tool — but only as a recovery path, not the default.
 
 ### 0.6 Acquire concurrency slot
 
