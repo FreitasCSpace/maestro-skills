@@ -36,15 +36,18 @@ Provided via `$CLAUDEHUB_INPUT_KWARGS` JSON:
 {
   "operation": "status|merge|close|prune",
   "project_slug": "asset-management-system-ams",
-  "meta_issue_number": 500,
+  "anchor_issue_number": 286,
   "target_org": "carespace-ai",
   "involved_repos": ["carespace-admin", "carespace-ui", "carespace-api"]
 }
 ```
 
-`involved_repos` is the resolved list from the meta-issue's BMAD
-`feature-intent.json.involved_repos[].full_name`. The Maestro orchestrator
-resolves it before invoking this skill so we don't re-clone the backlog repo.
+`anchor_issue_number` is the lowest-numbered open user-story issue in the
+project group (the issue that received orchestration comments during the
+implementation pipeline). `involved_repos` is the resolved list from the
+project's BMAD `feature-intent.json.involved_repos[].full_name`. The Maestro
+orchestrator resolves both before invoking this skill so we don't re-clone
+the backlog repo.
 
 `$GITHUB_TOKEN` must be the Maestro AI GitHub App installation token with
 PR write permission on every repo in `involved_repos`.
@@ -146,7 +149,7 @@ After the multi-gitter run, comment on each PR (FR17 wording):
 
 ```bash
 jq -r '.[] | select(.merged == true) | .url' /tmp/merge.json | while read url; do
-  gh pr comment "$url" --body "Approved at project-meta issue #$META_ISSUE_NUMBER. Merged as part of group:project-$PROJECT_SLUG."
+  gh pr comment "$url" --body "Approved at anchor issue #$ANCHOR_ISSUE_NUMBER. Merged as part of group:project-$PROJECT_SLUG."
 done
 ```
 
@@ -169,13 +172,13 @@ Triggered when the meta-issue closes without approval (or with `rejected`).
 multi-gitter close \
   $REPO_FLAGS \
   --branch "$BRANCH" \
-  --message "Rejected at project-meta issue #$META_ISSUE_NUMBER" \
+  --message "Rejected at anchor issue #$ANCHOR_ISSUE_NUMBER" \
   --output json > /tmp/close.json
 ```
 
 multi-gitter `close` posts the `--message` as a PR comment before closing,
-which satisfies FR18's `Rejected at project-meta issue #<N>` requirement
-naturally.
+which satisfies the FR18 rejection-comment requirement (originally specced
+against a project-meta issue; now satisfied via the anchor user-story issue).
 
 **Do NOT delete branches yet.** FR18 mandates a 30-day grace period for
 forensic review. Branch deletion is the `prune` operation, scheduled via a
@@ -209,7 +212,7 @@ Same FR24 contract as `oracle-pipeline`. Emit one structured stdout line
 per repo per operation:
 
 ```json
-{"project_slug":"...","meta_issue_number":500,"action":"group_merge",
+{"project_slug":"...","anchor_issue_number":286,"action":"group_merge",
  "actor":"maestro-orchestrator","timestamp":"...","outcome":"success",
  "repo":"carespace-admin","sha":"abc123"}
 ```

@@ -3,25 +3,38 @@ name: oracle-pipeline
 description: |
   Autonomous project-level dev pipeline — implements an entire Oracle backlog
   project (all epics + all user stories) in one session.
-  Triggered by a `project-meta` issue in `the-oracle-backlog` carrying the
-  `maestro-ready` label. Consumes the project's BMAD context, iterates every
-  story in dependency order, opens one cumulative PR per affected repo, and
-  fires a `repository_dispatch` event to deploy the ephemeral review env.
+  Triggered by user-story issues in `the-oracle-backlog` that share a
+  `project:<name>` label and carry `maestro-ready`. Consumes the project's
+  BMAD context, iterates every story in dependency order, opens one cumulative
+  PR per affected repo, and fires a `repository_dispatch` event to deploy the
+  ephemeral review env.
 ---
 
 # Oracle Pipeline (project-level)
 
 You are an autonomous **project-level** development pipeline. The unit of work
-is an entire Oracle backlog project: every epic and every user story in the
-project's `stories-output.md`, executed in BMAD-defined dependency order, in a
+is an entire Oracle backlog project: every epic and every user story sharing
+a `project:<name>` label, executed in BMAD-defined dependency order, in a
 single session. There is NO per-story human gate.
+
+## Trigger model — uses existing `project:*` labels (no `project-meta` label)
+
+The backlog uses `project:<name>` labels on user-story issues to group them.
+There is no separate `project-meta` issue and no `project-meta` label. This
+skill treats the **set of open user-story issues** sharing a `project:<X>`
+label and carrying `maestro-ready` as the project's trigger surface.
+
+Within a project group, the **anchor issue** is the lowest-numbered open user
+story in the group. All orchestration comments (status, completion, failure)
+go on the anchor issue. The other user-stories in the group are still
+updated with status labels as they are implemented.
 
 This skill is a project-level adaptation of the original `pipeline` skill.
 Differences vs `pipeline/` at a glance:
 
 | `pipeline/`                     | `oracle-pipeline/` (this skill)            |
 |---------------------------------|--------------------------------------------|
-| Trigger: single GitHub issue    | Trigger: `project-meta` issue + `maestro-ready` label |
+| Trigger: single GitHub issue    | Trigger: `project:<X>` + `maestro-ready` user-story group |
 | Clones one repo                 | Clones every repo in `feature_intent.involved_repos` |
 | One commit, one PR              | Atomic commit per story, one cumulative PR per affected repo |
 | Branch: `pipeline/issue-N-...`  | Branch: `feat/oracle-project-<slug>` per repo |
@@ -36,9 +49,8 @@ run. Do NOT read them. Do NOT look at PIPELINE.md. Do NOT assume any work is
 done. This is a BRAND NEW project run. Ignore everything in the current
 directory.
 
-Your very first action must be to read the task input, identify the
-`project-meta` issue, and clone fresh repos under `/tmp/oracle-work/`.
-NEVER say "already completed" — every run is a new project.
+Your very first action must be Step 0.0 (input gate) below. NEVER say
+"already completed" — every run is a new project.
 
 ---
 
@@ -84,7 +96,7 @@ After reading, use it to:
 Once read, the file is in your context. Don't re-read unless modified or the
 user asks. Applies to:
 - `CARESPACE_CONTEXT.md` (read ONCE at start)
-- The project-meta issue body (`gh issue view` ONCE)
+- The anchor issue body (`gh issue view` ONCE)
 - `feature-intent.json`, `stories-output.md`, `architecture.md`, `prd.md`,
   `front-end-spec.md` (read ONCE at start)
 - `PIPELINE.md` after you wrote to it
@@ -104,74 +116,142 @@ this? If yes, go directly. If no, grep first.
 ### 5. One search per question
 Don't run 3 grep variations. Pick the best one. One alternative — then move on.
 
+### 6. Scan stops the moment you find a project to run
+The auto-discovery query in 0.0 is bounded — exactly ONE `gh issue list`
+call. Do not wander the issue list looking for a meta issue, an epic issue,
+or anything else. The contract is: `project:<X>` + `user-story` +
+`maestro-ready` + open. Nothing else.
+
 ---
 
 ## Step 0 — Setup
 
-### 0.1 Read task input
+### 0.0 Input gate (do this FIRST, before anything else)
 
 ```bash
 echo "$CLAUDEHUB_INPUT_KWARGS"
 ```
 
-Extract these required fields from the input:
+Two valid input modes:
 
-- `meta_issue_number` — the `project-meta` issue number in `the-oracle-backlog`
-- `project_slug` — slugified `project:` label value (lowercase, hyphenated)
-- `bmad_context_dir` — path under `the-oracle-backlog/bmad-context/<slug>/`
-- `target_org` — defaults to `carespace-ai`
-- `github_app_token` — short-lived installation token (provided via env)
+**Mode A — orchestrator-driven (preferred).** `$CLAUDEHUB_INPUT_KWARGS` is a
+JSON object containing at minimum `project_slug`. Example:
 
-If any field is missing, fail fast: comment on the meta-issue (if known) with
-`Pipeline input incomplete: missing <fields>` and remove the `maestro-ready`
-label.
-
-### 0.2 Authenticate GitHub
-
-```bash
-echo "$GITHUB_TOKEN" | gh auth login --with-token 2>/dev/null
-gh auth status
+```json
+{
+  "project_slug": "asset-management-system-ams",
+  "target_org": "carespace-ai",
+  "anchor_issue_number": 286
+}
 ```
 
-The token is the AI's GitHub App installation token. It can:
-- Read all in-scope `carespace-ai` repos
-- Push **only** to `refs/heads/feat/oracle-project-*` on those repos
+`anchor_issue_number` is optional; if omitted it is resolved in 0.4.
 
-It cannot push to `main`. If a push to `main` succeeds, that is a P0 ruleset
-breach — abort the run and page on-call.
+**Mode B — manual / auto-discovery.** Input is empty. The skill resolves
+`project_slug` itself by listing eligible projects (0.1).
 
-### 0.3 Wipe and prepare workspace
+In BOTH modes, `target_org` defaults to `carespace-ai`. `$GITHUB_TOKEN` must
+be set (the Maestro AI GitHub App installation token).
+
+If `$GITHUB_TOKEN` is empty: print `BLOCKED: GITHUB_TOKEN missing` and exit
+1. Do not improvise.
+
+If neither Mode A nor Mode B can resolve a `project_slug` after 0.1: print
+`BLOCKED: no eligible project found (no open user-story issues with project:*
++ maestro-ready labels)` and exit 1. Do not improvise. Do not try
+alternative label names.
+
+### 0.1 Resolve project_slug if not provided
+
+```bash
+gh auth status >/dev/null || { echo "BLOCKED: GITHUB_TOKEN invalid"; exit 1; }
+
+if [ -z "$PROJECT_SLUG" ]; then
+  # Mode B: discover eligible projects
+  ELIGIBLE=$(gh issue list \
+    --repo "$TARGET_ORG/the-oracle-backlog" \
+    --label maestro-ready --label user-story \
+    --state open --limit 1000 \
+    --json number,labels \
+    | jq -r '
+      [.[] | .labels[] | select(.name | startswith("project:"))]
+      | group_by(.name) | map({label: .[0].name, count: length})
+      | sort_by(-.count) | .[]
+      | "\(.count)\t\(.label)"
+    ')
+
+  if [ -z "$ELIGIBLE" ]; then
+    echo "BLOCKED: no eligible project found"; exit 1
+  fi
+
+  # Pick the project with the most ready stories. Slugify its label.
+  TOP_LABEL=$(echo "$ELIGIBLE" | head -1 | cut -f2- | sed 's/^project: //')
+  PROJECT_SLUG=$(echo "$TOP_LABEL" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+  echo "Auto-selected project: $TOP_LABEL → slug=$PROJECT_SLUG"
+fi
+
+# Re-derive the canonical "project:<X>" label string for queries below
+# (the slug is for branches and dirs; the label is for issue searches)
+PROJECT_LABEL="project:${TOP_LABEL:-$PROJECT_SLUG_TITLE}"
+```
+
+If the orchestrator passed `project_slug` but not the label string, derive
+the label by listing labels matching `project:*` and selecting the one whose
+slugified value matches `$PROJECT_SLUG`. If none match, exit 1 with
+`BLOCKED: no project label matches slug '$PROJECT_SLUG'`.
+
+### 0.2 Wipe and prepare workspace
 
 ```bash
 rm -rf /tmp/oracle-work 2>/dev/null
-mkdir -p /tmp/oracle-work
+mkdir -p /tmp/oracle-work /tmp/oracle-work/workspace
 cd /tmp/oracle-work
 ```
 
 **You MUST work in `/tmp/oracle-work` for the entire run.**
 
-### 0.4 Fetch the project-meta issue
+### 0.3 List the project's user-story issues (the trigger surface)
 
 ```bash
-gh issue view "$META_ISSUE_NUMBER" \
+gh issue list \
   --repo "$TARGET_ORG/the-oracle-backlog" \
-  --json number,title,body,labels,state
+  --label "$PROJECT_LABEL" --label maestro-ready --label user-story \
+  --state open --limit 1000 \
+  --json number,title,labels,body \
+  > /tmp/oracle-work/stories.json
+
+STORY_COUNT=$(jq length /tmp/oracle-work/stories.json)
+[ "$STORY_COUNT" -gt 0 ] || { echo "BLOCKED: no user-story issues with $PROJECT_LABEL + maestro-ready"; exit 1; }
 ```
 
-Verify:
-- The issue carries the `project-meta` AND `maestro-ready` labels
-- The issue is `OPEN`
-- Exactly one `project:<slug>` label is present and matches `$PROJECT_SLUG`
+These issues are the **trigger surface** — they are NOT the implementation
+contract. The implementation contract lives in `bmad-context/<slug>/`.
 
-If any check fails, comment with the reason, remove `maestro-ready`, and exit.
+### 0.4 Resolve anchor issue
 
-### 0.5 Load and validate BMAD context (FR3)
+The anchor issue is the lowest-numbered open user-story in the project group.
+All orchestration comments go here.
 
-Clone the backlog repo (read-only) and validate the context dir:
+```bash
+ANCHOR_ISSUE=$(jq -r '[.[] | .number] | min' /tmp/oracle-work/stories.json)
+```
+
+If the orchestrator provided `anchor_issue_number`, use that instead — but
+verify it appears in `stories.json`; if not, exit 1.
+
+### 0.5 Load and validate BMAD context
 
 ```bash
 gh repo clone "$TARGET_ORG/the-oracle-backlog" backlog -- --depth=1
-cd backlog/bmad-context/$PROJECT_SLUG
+CTX_DIR="backlog/bmad-context/$PROJECT_SLUG"
+cd "$CTX_DIR" 2>/dev/null || {
+  gh issue comment "$ANCHOR_ISSUE" \
+    --repo "$TARGET_ORG/the-oracle-backlog" \
+    --body "BMAD context dir not found at \`bmad-context/$PROJECT_SLUG/\` — pipeline cannot run"
+  exit 1
+}
 
 REQUIRED=(feature-intent.json architecture.md prd.md front-end-spec.md stories-output.md)
 MISSING=()
@@ -180,12 +260,13 @@ for f in "${REQUIRED[@]}"; do
 done
 
 if [ ${#MISSING[@]} -gt 0 ]; then
-  gh issue comment "$META_ISSUE_NUMBER" \
+  gh issue comment "$ANCHOR_ISSUE" \
     --repo "$TARGET_ORG/the-oracle-backlog" \
     --body "BMAD context incomplete: missing ${MISSING[*]}"
-  gh issue edit "$META_ISSUE_NUMBER" \
-    --repo "$TARGET_ORG/the-oracle-backlog" \
-    --remove-label maestro-ready
+  # Strip maestro-ready from the entire group (not just anchor)
+  jq -r '.[].number' /tmp/oracle-work/stories.json | while read n; do
+    gh issue edit "$n" --repo "$TARGET_ORG/the-oracle-backlog" --remove-label maestro-ready
+  done
   exit 1
 fi
 cd /tmp/oracle-work
@@ -198,12 +279,43 @@ Then **read all five files ONCE** into context. Extract:
 - Per-story `affected_modules`, `new_files_needed`, `dev_notes`,
   `acceptance_criteria`
 
-### 0.6 Clone every involved repo (FR5)
+The story IDs in `stories-output.md` are the BMAD ordering source. The
+GitHub user-story issues from 0.3 are matched to them by title text or by
+an explicit `story:N.M` label if BMAD writes one. If neither matches: log a
+warning to PIPELINE.md but proceed using the BMAD ordering.
 
-For each `repo` in `involved_repos`:
+### 0.6 Acquire concurrency slot
+
+A project is "active" if any of its user-stories carry `oracle:implementing`.
 
 ```bash
-mkdir -p /tmp/oracle-work/workspace
+ACTIVE=$(gh issue list \
+  --repo "$TARGET_ORG/the-oracle-backlog" \
+  --label oracle:implementing --state open --limit 1000 \
+  --json labels \
+  | jq '[.[] | .labels[] | select(.name | startswith("project:")) | .name] | unique | length')
+
+if [ "$ACTIVE" -ge 2 ]; then
+  echo "Concurrency cap reached ($ACTIVE active projects); leaving maestro-ready in place"
+  exit 0
+fi
+
+# Mark every user-story in the group as implementing
+jq -r '.[].number' /tmp/oracle-work/stories.json | while read n; do
+  gh issue edit "$n" \
+    --repo "$TARGET_ORG/the-oracle-backlog" \
+    --add-label oracle:implementing \
+    --remove-label maestro-ready
+done
+
+gh issue comment "$ANCHOR_ISSUE" \
+  --repo "$TARGET_ORG/the-oracle-backlog" \
+  --body "Oracle pipeline started for \`$PROJECT_LABEL\` ($STORY_COUNT user-stories). Tracking on this issue."
+```
+
+### 0.7 Clone every involved repo
+
+```bash
 for REPO in "${INVOLVED_REPOS[@]}"; do
   gh repo clone "$TARGET_ORG/$REPO" "workspace/$REPO" -- --depth=50
   cd "workspace/$REPO"
@@ -216,10 +328,7 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
 done
 ```
 
-### 0.7 Create or reset the project branch (FR6, FR25)
-
-For each cloned repo, create `feat/oracle-project-<slug>` off latest `main`.
-Idempotency rules:
+### 0.8 Create or reset the project branch (idempotent)
 
 ```bash
 BRANCH="feat/oracle-project-$PROJECT_SLUG"
@@ -228,26 +337,23 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
   git fetch origin main "$BRANCH" 2>/dev/null || git fetch origin main
 
   if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
-    # Branch exists — verify all commits authored by AI App identity
     NON_AI=$(git log "origin/main..origin/$BRANCH" \
       --pretty='%ae' | grep -v '^oracle-pipeline@carespace\.ai$' | head -1)
     if [ -n "$NON_AI" ]; then
-      gh issue comment "$META_ISSUE_NUMBER" \
+      gh issue comment "$ANCHOR_ISSUE" \
         --repo "$TARGET_ORG/the-oracle-backlog" \
-        --body "Human commits detected on AI project branch in $REPO — manual reconciliation required"
+        --body "Human commits detected on AI project branch in \`$REPO\` — manual reconciliation required"
       exit 1
     fi
-    # Reset to main, force-push later
     git checkout -B "$BRANCH" origin/main
   else
     git checkout -B "$BRANCH" origin/main
   fi
-
   cd /tmp/oracle-work
 done
 ```
 
-### 0.8 Auto-detect stack and install per repo
+### 0.9 Auto-detect stack and install per repo
 
 Same logic as the original `pipeline` skill, but run for each cloned repo.
 Detection in priority order: `package-lock.json` → `yarn.lock` → `bun.lock` →
@@ -257,7 +363,7 @@ Detection in priority order: `package-lock.json` → `yarn.lock` → `bun.lock` 
 Generate a temporary `CLAUDE.md` per repo if missing (same template as
 `pipeline/`). Do NOT commit a generated `CLAUDE.md` on the project branch.
 
-### 0.9 Write the master PIPELINE.md
+### 0.10 Write the master PIPELINE.md
 
 At `/tmp/oracle-work/PIPELINE.md`:
 
@@ -266,9 +372,11 @@ At `/tmp/oracle-work/PIPELINE.md`:
 
 ## Project
 slug: <project-slug>
-meta-issue: <org>/the-oracle-backlog#<N>
+label: <project:X>
+anchor-issue: <org>/the-oracle-backlog#<N>
+group user-stories: <list of issue numbers>
 involved repos: <list>
-total stories: <N>
+total stories (BMAD): <N>
 
 ## BMAD Context
 - feature-intent.json: <key fields summary>
@@ -284,28 +392,12 @@ IN_PROGRESS
 PIPELINE.md is your run-memory. It is NOT committed to any repo — it lives
 only in `/tmp/oracle-work/`.
 
-### 0.10 Acquire concurrency slot (FR19)
-
-```bash
-ACTIVE=$(gh issue list --repo "$TARGET_ORG/the-oracle-backlog" \
-  --label oracle:implementing --state open --json number | jq length)
-
-if [ "$ACTIVE" -ge 2 ]; then
-  echo "Concurrency cap reached ($ACTIVE active envs); leaving maestro-ready in place"
-  exit 0
-fi
-
-gh issue edit "$META_ISSUE_NUMBER" \
-  --repo "$TARGET_ORG/the-oracle-backlog" \
-  --add-label oracle:implementing \
-  --remove-label maestro-ready
-```
-
 ---
 
 ## Phase 1 — Story Iteration (the meat)
 
-For each story in BMAD dependency order, run a compact build cycle.
+For each story in BMAD dependency order (from `stories-output.md`), run a
+compact build cycle.
 
 ```
 for story in stories_output.md (in order):
@@ -326,39 +418,45 @@ for story in stories_output.md (in order):
         g. git add -A
         h. git commit -m "[Story <N.M>] <story title>"
         i. Do NOT push yet — push happens once at end of run
-    3. Append `### Story <N.M>` to PIPELINE.md with: repos touched, files
+    3. If this story maps to a GitHub user-story issue: add label
+       `oracle:story-done` to that issue.
+    4. Append `### Story <N.M>` to PIPELINE.md with: repos touched, files
        modified, test outcome, scope_deviations
-    4. If any repo's tests still fail after inline retries, OR if a hard
+    5. If any repo's tests still fail after inline retries, OR if a hard
        error occurred: STOP. Go to Phase 1.5 (failure handling).
 ```
 
 **Per-story Iron Law:** every commit's diff must be a strict subset of the
 union of that story's `affected_modules` and `new_files_needed`.
 Out-of-scope edits accumulate into the project-level `scope_deviations` list
-(FR8) — they do NOT cause the story to fail, but they DO cause the resulting
-PRs to carry the `scope-deviation` label and skip auto-deploy.
+— they do NOT cause the story to fail, but they DO cause the resulting PRs
+to carry the `scope-deviation` label and skip auto-deploy.
 
-### Phase 1.5 — Failure Handling (FR26)
+### Phase 1.5 — Failure Handling
 
 ```bash
-gh issue comment "$META_ISSUE_NUMBER" \
+gh issue comment "$ANCHOR_ISSUE" \
   --repo "$TARGET_ORG/the-oracle-backlog" \
   --body "Pipeline failed at story $FAILED_STORY: $ERROR_SUMMARY"
 
-gh issue edit "$META_ISSUE_NUMBER" \
-  --repo "$TARGET_ORG/the-oracle-backlog" \
-  --remove-label oracle:implementing \
-  --add-label oracle:blocked-pipeline-failed
+# Roll labels back across the whole group so a re-trigger is possible
+jq -r '.[].number' /tmp/oracle-work/stories.json | while read n; do
+  gh issue edit "$n" \
+    --repo "$TARGET_ORG/the-oracle-backlog" \
+    --remove-label oracle:implementing \
+    --add-label oracle:blocked-pipeline-failed
+done
 ```
 
 Leave the project branches at the last successful story's commit. Do NOT
-push, do NOT open PRs, do NOT trigger deploy. A re-label of `maestro-ready`
-will resume from `$FAILED_STORY`. Update PIPELINE.md `## Status` to
-`FAILED_AT_STORY_<N.M>`. Exit non-zero.
+push, do NOT open PRs, do NOT trigger deploy. A re-application of
+`maestro-ready` to any story in the group will resume from `$FAILED_STORY`
+(orchestrator detects last commit, reads next story, runs from there).
+Update PIPELINE.md `## Status` to `FAILED_AT_STORY_<N.M>`. Exit non-zero.
 
 ---
 
-## Phase 2 — Cumulative Scope Audit (FR8)
+## Phase 2 — Cumulative Scope Audit
 
 ```bash
 for REPO in "${INVOLVED_REPOS[@]}"; do
@@ -371,11 +469,11 @@ done
 ```
 
 If `scope_deviations` is non-empty across any repo, that repo's PR gets the
-`scope-deviation` label and the deploy step is **skipped** (FR8).
+`scope-deviation` label and the deploy step is **skipped**.
 
 ---
 
-## Phase 3 — Multi-Repo PR Group (FR9)
+## Phase 3 — Multi-Repo PR Group
 
 Push and open one PR per repo, all targeting `main`. PRs are linked by
 `group:project-<slug>` so reviewers can navigate the group.
@@ -387,13 +485,13 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
   cd "workspace/$REPO"
   git push --force-with-lease -u origin "$BRANCH"
 
-  PR_BODY=$(build_pr_body)  # links to meta-issue, stories list, scope notes,
+  PR_BODY=$(build_pr_body)  # links to anchor issue, list of group user-stories,
+                            # stories implemented from BMAD ordering, scope notes,
                             # "Do not merge until all PRs in group are approved"
 
-  LABELS="oracle-project,group:project-$PROJECT_SLUG,project:$PROJECT_SLUG"
+  LABELS="oracle-project,group:project-$PROJECT_SLUG,$PROJECT_LABEL"
   [ -n "$REPO_DEVIATIONS" ] && LABELS="$LABELS,scope-deviation"
 
-  # Idempotent: update existing PR or create new
   EXISTING=$(gh pr list --repo "$TARGET_ORG/$REPO" \
     --head "$BRANCH" --state open --json number,url | jq '.[0]')
   if [ "$EXISTING" != "null" ]; then
@@ -412,37 +510,21 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
   cd /tmp/oracle-work
 done
 
-gh issue comment "$META_ISSUE_NUMBER" \
+gh issue comment "$ANCHOR_ISSUE" \
   --repo "$TARGET_ORG/the-oracle-backlog" \
   --body "Pipeline complete — PRs: $(format_pr_list)"
 ```
 
-> **Implementation tip — multi-repo PR orchestration tools.** The loop above
-> is a hand-rolled multi-repo PR opener. There are two existing OSS tools
-> that do exactly this kind of "apply changes to N repos, open PRs in batch"
-> pattern, and we should evaluate (not necessarily adopt) them:
->
-> - **multi-gitter** (Go, lindell/multi-gitter) — runs an arbitrary script
->   inside each repo, then opens a PR per repo via the GitHub/GitLab/Bitbucket
->   API. Has built-in `merge` / `status` / `close` subcommands that map
->   directly to FR17 (approval merge) and FR18 (rejection cleanup). License:
->   MIT.
-> - **turbolift** (Go, skyscanner/turbolift) — repo-list driven. Forks +
->   branches + PRs per repo. Better suited when each repo gets the *same*
->   conceptual change. Less flexible than multi-gitter for our use case
->   because Oracle stories produce *different* diffs per repo.
->
-> See `docs/multi-repo-tools.md` for the full evaluation and
-> `skills/oracle-pipeline-lifecycle/` for the wired-up sibling skill that
-> wraps multi-gitter for FR15 (group status), FR17 (group merge), and FR18
-> (group close + prune). The hand-rolled loop above is correct here because
-> we already have per-repo diffs committed locally — we don't need a tool
-> to "apply the same change everywhere," we just need to push + PR each
-> repo. multi-gitter's value is in the lifecycle, not the implementation.
+> **Multi-repo PR orchestration tools.** This loop is hand-rolled because
+> Oracle stories produce *different* diffs per repo (per-story, per-repo
+> implementation). For the lifecycle phase (group merge / close / status),
+> see the sibling skill `oracle-pipeline-lifecycle/` which wraps
+> **multi-gitter** for those same-action-many-repos operations. Full
+> evaluation in `docs/multi-repo-tools.md`.
 
 ---
 
-## Phase 4 — Trigger Ephemeral Deploy (FR10)
+## Phase 4 — Trigger Ephemeral Deploy
 
 If — and only if — `scope_deviations` is empty across all repos:
 
@@ -451,30 +533,35 @@ gh api "repos/$TARGET_ORG/infra/dispatches" \
   --method POST \
   --field event_type='oracle.project.complete' \
   --field "client_payload[project_slug]=$PROJECT_SLUG" \
-  --field "client_payload[meta_issue_number]=$META_ISSUE_NUMBER" \
+  --field "client_payload[anchor_issue_number]=$ANCHOR_ISSUE" \
   --field "client_payload[involved_repos]=$(jq -nc --argjson r "$INVOLVED_REPOS_JSON" '$r')" \
   --field "client_payload[git_sha_per_repo]=$(jq -nc --argjson s "$PR_SHAS_JSON" '$s')" \
   --field "client_payload[bmad_context_path]=bmad-context/$PROJECT_SLUG"
 
-gh issue edit "$META_ISSUE_NUMBER" \
-  --repo "$TARGET_ORG/the-oracle-backlog" \
-  --remove-label oracle:implementing \
-  --add-label oracle:deploying
+# Move every user-story in the group from implementing → deploying
+jq -r '.[].number' /tmp/oracle-work/stories.json | while read n; do
+  gh issue edit "$n" \
+    --repo "$TARGET_ORG/the-oracle-backlog" \
+    --remove-label oracle:implementing \
+    --add-label oracle:deploying
+done
 ```
 
-If scope deviations exist: post a comment listing them, leave the
-`scope-deviation` label on each PR, and DO NOT dispatch the deploy event.
+If scope deviations exist: post a comment on the anchor issue listing them,
+leave the `scope-deviation` label on each PR, and DO NOT dispatch deploy.
 
 ---
 
 ## Phase 5 — Emit Structured Output
 
-Print the final structured output (matches `architecture.md §5.2`):
+Print the final structured output to stdout:
 
 ```json
 {
-  "meta_issue_number": 500,
   "project_slug": "asset-management-system-ams",
+  "project_label": "project: Asset Management System (AMS)",
+  "anchor_issue_number": 286,
+  "group_user_stories": [273, 274, 275, ...],
   "stories_implemented": ["1.1", "1.2", "1.3", "2.1"],
   "prs": [
     {"repo": "carespace-admin", "url": "...", "sha": "abc123", "files_modified": [...]},
@@ -492,13 +579,12 @@ Update PIPELINE.md `## Status` to `COMPLETE` (or
 
 ---
 
-## Audit Logging (FR24)
+## Audit Logging
 
-Emit one structured stdout line per state transition (Maestro forwards
-stdout to Log Analytics):
+Emit one structured stdout line per state transition:
 
 ```json
-{"project_slug":"...","meta_issue_number":500,"story_id":"1.2",
+{"project_slug":"...","anchor_issue_number":286,"story_id":"1.2",
  "action":"story_committed","actor":"maestro-orchestrator",
  "timestamp":"2026-04-30T10:23:00Z","outcome":"success","cost_estimate":null}
 ```
@@ -522,7 +608,7 @@ session, abort with `PIPELINE_RUNAWAY` and require human review.
 ## Final Output
 
 ```
-COMPLETE: project=<slug> meta-issue=#<N>
+COMPLETE: project=<slug> anchor=#<N> group=[<list>]
 PRs:
   <repo-1>: <url-1>
   <repo-2>: <url-2>
