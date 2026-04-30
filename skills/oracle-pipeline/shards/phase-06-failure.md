@@ -5,17 +5,19 @@ build exceeded max retries).
 
 ## Label rollback
 
+Only the currently-failing story's issue is in `oracle:implementing`.
+All other stories are still `maestro-ready` — leave them untouched.
+
 ```bash
 gh issue comment "$ANCHOR_ISSUE" \
   --repo "$TARGET_ORG/the-oracle-backlog" \
   --body "Pipeline failed at story $FAILED_STORY: $ERROR_SUMMARY"
 
-jq -r '.[].number' /tmp/oracle-work/stories.json | while read n; do
-  gh issue edit "$n" \
-    --repo "$TARGET_ORG/the-oracle-backlog" \
-    --remove-label oracle:implementing \
-    --add-label oracle:blocked-pipeline-failed
-done
+# Roll back only the story that was in-progress
+gh issue edit "$FAILED_STORY_ISSUE_NUMBER" \
+  --repo "$TARGET_ORG/the-oracle-backlog" \
+  --remove-label oracle:implementing \
+  --add-label oracle:blocked-pipeline-failed
 ```
 
 ## State left behind

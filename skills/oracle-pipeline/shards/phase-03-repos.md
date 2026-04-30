@@ -17,13 +17,10 @@ if [ "$ACTIVE" -ge 2 ]; then
   exit 0
 fi
 
-# Mark every user-story in the group as implementing
-jq -r '.[].number' /tmp/oracle-work/stories.json | while read n; do
-  gh issue edit "$n" \
-    --repo "$TARGET_ORG/the-oracle-backlog" \
-    --add-label oracle:implementing \
-    --remove-label maestro-ready
-done
+# Do NOT bulk-change all story labels here.
+# Labels transition one story at a time as each story is picked up in Phase 1.
+# (maestro-ready → oracle:implementing at story start; oracle:implementing →
+#  oracle:story-done at story end)
 
 gh issue comment "$ANCHOR_ISSUE" \
   --repo "$TARGET_ORG/the-oracle-backlog" \

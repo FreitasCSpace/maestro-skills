@@ -11,6 +11,21 @@ story). Keep them in context for all stories.
 for story in stories-output.md (BMAD order):
 ```
 
+### 1.0 Pick up the story
+
+```bash
+# Transition this story's issue: maestro-ready → oracle:implementing
+gh issue edit <story_issue_number> \
+  --repo "$TARGET_ORG/the-oracle-backlog" \
+  --add-label oracle:implementing \
+  --remove-label maestro-ready
+```
+
+Only the current story's issue changes label. All other stories remain
+`maestro-ready` until their turn.
+
+Append `### Story <N.M> — <title>` to PIPELINE.md with `## Status: IN_PROGRESS`.
+
 ### 1.1 Investigate
 
 ```bash
@@ -107,10 +122,11 @@ Do NOT push yet — push happens once at the end of the run (Phase 3).
 ### 1.9 Bookkeeping
 
 ```bash
-# If this story maps to a GitHub user-story issue:
-gh issue edit <num> \
+# Transition this story's issue: oracle:implementing → oracle:story-done
+gh issue edit <story_issue_number> \
   --repo "$TARGET_ORG/the-oracle-backlog" \
-  --add-label oracle:story-done
+  --add-label oracle:story-done \
+  --remove-label oracle:implementing
 ```
 
 Update PIPELINE.md story section `## Status: COMPLETE`.
