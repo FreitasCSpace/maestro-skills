@@ -1,0 +1,1036 @@
+# CareSpace Codebase Context for AI Agents
+
+> This document gives an AI agent everything it needs to start fixing GitHub issues in the CareSpace ecosystem. Read this first before exploring any repo.
+
+## What CareSpace Is
+
+CareSpace is a **HIPAA-compliant healthcare platform** for AI-assisted physical therapy, posture analysis, and movement health. It handles **PHI (Protected Health Information)**. The platform spans:
+
+- Web app for clinicians (React + TypeScript)
+- Admin backend for patient management (NestJS + Prisma + PostgreSQL)
+- Mobile apps (Native Android, Native iOS, Flutter, Kiosk)
+- Backend services for pose analysis (NestJS + TensorFlow MoveNet) and 3D body modeling (Python + PyTorch)
+- Headless CMS for clinical content (Strapi)
+- Multi-platform SDK for ROM (Range of Motion) assessments
+
+## Issue Source — Bug Tracker
+
+GitHub issues are auto-created by **carespace-bug-tracker** (Next.js + Anthropic SDK). When a customer reports a bug:
+
+1. Tracker captures: title, description, steps, expected/actual, severity, category, environment, browser
+2. Anthropic API enhances with: rootCauseHypothesis, codebaseContext, claudePrompt (4-6 step fix instructions)
+3. Issue is created in the appropriate repo with this **exact** body structure (verbatim from `lib/github-service.ts:126-187`):
+
+````markdown
+## 🐛 Bug Report
+
+### Original User Report
+> **{title}**
+>
+> {description}
+> **Expected:** {expectedBehavior}    (only if present)
+> **Actual:** {actualBehavior}        (only if present)
+
+---
+
+### AI-Enhanced Description
+{enhancedDescription}
+
+### Root Cause Hypothesis
+{rootCauseHypothesis}
+
+### Codebase Context
+{codebaseContext}    ← sourced from pre-computed *-codebase-context.json
+
+---
+
+## Behavior Analysis
+
+### Expected Behavior
+{enhancedExpectedBehavior}
+
+### Actual Behavior
+{enhancedActualBehavior}
+
+### Gap Analysis
+{gapAnalysis}
+
+---
+
+## Reproduction Steps
+{stepsToReproduce or "Not provided"}
+
+### Attachments       (only if attachments exist)
+- [{name}]({url}) (X.XX KB)
+
+---
+
+## Technical Context
+{technicalContext}
+
+### Environment
+- **Severity**: {low|medium|high|critical}
+- **Category**: {ui|functionality|performance|security}
+- **Priority**: {1-5}/5
+- **Repository**: {targetRepo — AI-routed key into REPOS map}
+- **Environment**: {environment or "Not provided"}
+- **Browser**: {browserInfo or "Not provided"}
+- **Reporter**: {userEmail}                    (only if present)
+
+---
+
+## 🤖 Claude Code Fix Instructions
+```
+{claudePrompt — canonical prompt the pipeline AI should consume}
+```
+
+---
+*This issue was automatically created from a customer bug report, enhanced with AI analysis, and routed to the {targetRepo} repository.*
+````
+
+**Where attachments live (CRITICAL):**
+The bug-tracker uploads attachments to a **dedicated `REPOS.attachments` repository on `main`** via Octokit's contents API, then constructs:
+```
+https://raw.githubusercontent.com/{owner}/{REPOS.attachments}/main/{filepath}
+```
+
+So issue attachments use **`raw.githubusercontent.com`** (publicly accessible, no auth needed), NOT `user-attachments/assets/`. Plain `curl` works.
+
+**How AI enhancement works:**
+1. User submits via web form (`app/page.tsx`) or Chrome extension (auto-screenshot)
+2. `app/api/submit-bug/route.ts` receives → sanitizes (`prompt-sanitizer.ts`) → rate-limits → queues
+3. `lib/llm-service.ts` calls **Claude Opus 4.5** (`@anthropic-ai/sdk`) with the user report PLUS the relevant `*-codebase-context.json` (loaded by `codebase-context-loader.ts`)
+4. Claude returns an `EnhancedBugReport` populating every field above PLUS `targetRepo` (intelligent routing), `suggestedLabels`, `priority`, and a ready-to-paste `claudePrompt` for Claude Code
+5. `github-service.ts` formats and creates the issue with labels; `clickup-service.ts` creates linked ClickUp task; outgoing webhooks fire with HMAC-SHA256 signature
+
+**Implication for AI agents fixing these issues:**
+- The `Codebase Context` section already contains specific files/aliases to check
+- The `Claude Code Fix Instructions` section contains a ready-to-paste prompt — **use it as your starting point**
+- The `Repository` field tells you which repo to clone (don't guess from the issue title)
+- Attachments are publicly accessible via `raw.githubusercontent.com` — `curl` without auth works
+
+## Repository Map
+
+| Repo | Stack | Default Branch | Purpose |
+|------|-------|---------------|---------|
+| **carespace-ui** | React 18 + TS 5 + Ant Design 5 + Redux Toolkit + CRACO | master | Main clinician web app |
+| **carespace-admin** | NestJS 11 + Prisma + PostgreSQL | master | API backend, patient management, auth |
+| **carespace-posture-engine** | NestJS 11 + TS 5.3 + TensorFlow MoveNet | master | Posture analysis (Kendall plumb-line) |
+| **carespace-3d-body-service** | Python 3.11 + FastAPI + PyTorch | master | 3D body model (sam-3d-body) |
+| **carespace-strapi** | Strapi 5 (Node.js) | master | Headless CMS for clinical content |
+| **carespace-mobile-android** | Kotlin + Gradle KTS | master | Native Android app |
+| **carespace-mobile-ios** | Swift + CocoaPods (Xcodeproj) | master | Native iOS app |
+| **carespace_mobile** | Flutter (Dart 2.x — legacy) | master | Older Flutter app |
+| **carespace-kiosk** | Flutter 3.10 + Riverpod 3 + go_router | master | Correctional facility kiosk |
+| **carespace-sdk** | `carespace_rom_sdk` v1.0.0 (Flutter package + Google ML Kit) | master | ROM SDK (embeds in Flutter/iOS/Android — NOT on pub.dev) |
+| **carespace-bug-tracker** | Next.js 15 + Anthropic SDK + Octokit | master | Auto bug reporting → GitHub issues |
+
+**Pipeline always branches from master, opens PR to `develop`.**
+
+---
+
+## Architecture Diagram
+
+CareSpace is a 5-layer system. Read top to bottom:
+
+```mermaid
+flowchart TB
+    Users["👤 Users<br/><i>Patients · Clinicians · Admins · Inmates</i>"]
+
+    subgraph L1 ["① Client Apps"]
+        direction LR
+        UI["carespace-ui<br/><i>React web</i>"]
+        Mob["carespace-mobile-{android,ios}<br/><i>Native</i>"]
+        Flut["carespace_mobile · carespace-kiosk<br/><i>Flutter</i>"]
+    end
+
+    SDK["② carespace-sdk<br/><i>ROM scan widget · embedded in mobile/kiosk</i>"]
+
+    subgraph L3 ["③ Backend Services"]
+        direction LR
+        Admin["carespace-admin<br/><i>NestJS · main API · auth</i>"]
+        Strapi["carespace-strapi<br/><i>CMS · clinical content</i>"]
+        Posture["carespace-posture-engine<br/><i>MoveNet · plumb-line</i>"]
+        Body3D["carespace-3d-body-service<br/><i>SAM-3D mesh</i>"]
+    end
+
+    subgraph L4 ["④ Data & Infra"]
+        direction LR
+        DB[("PostgreSQL<br/>MySQL")]
+        Blob[("Azure Blob<br/><i>PHI files</i>")]
+        Bus(["Azure Service Bus<br/><i>async queue</i>"])
+        Auth(["FusionAuth · Key Vault"])
+    end
+
+    subgraph L5 ["⑤ Ops & Tooling"]
+        direction LR
+        BT["carespace-bug-tracker<br/><i>auto issue bot</i>"]
+        Mae["Maestro<br/><i>pipeline orchestrator</i>"]
+    end
+
+    Users --> L1
+    L1 --> SDK
+    L1 --> L3
+    SDK --> L3
+    L3 --> L4
+    L3 -.->|posture jobs| Bus
+    Bus -.-> Posture
+    Users -.->|reports bug| BT
+    BT -->|creates issue| Mae
+    Mae -->|opens PR| L1
+    Mae -->|opens PR| L3
+
+    classDef users fill:#0c4a6e,stroke:#0ea5e9,color:#fff,stroke-width:2px
+    classDef l1 fill:#1e3a8a,stroke:#3b82f6,color:#fff
+    classDef l2 fill:#713f12,stroke:#eab308,color:#fff
+    classDef l3 fill:#7c2d12,stroke:#ea580c,color:#fff
+    classDef l4 fill:#14532d,stroke:#22c55e,color:#fff
+    classDef l5 fill:#3f1d5e,stroke:#a855f7,color:#fff
+
+    class Users users
+    class UI,Mob,Flut l1
+    class SDK l2
+    class Admin,Strapi,Posture,Body3D l3
+    class DB,Blob,Bus,Auth l4
+    class BT,Mae l5
+```
+
+### Layer responsibilities
+
+| # | Layer | What it does |
+|---|-------|--------------|
+| ① | **Client Apps** | What users see. Web (React), native mobile (Kotlin/Swift), Flutter (legacy + kiosk). All talk to backend via REST. |
+| ② | **SDK** | `carespace-sdk` is embedded inside the mobile apps. Provides camera + Google ML Kit pose detection for ROM scans. NOT used by web. |
+| ③ | **Backend Services** | `carespace-admin` is the main API (auth, patient data, sessions). `carespace-strapi` holds clinical reference content (exercises, joints). `posture-engine` and `3d-body-service` are async workers. |
+| ④ | **Data & Infra** | PostgreSQL (admin) + MySQL (Strapi). Azure Blob for PHI files. Azure Service Bus for async posture jobs. FusionAuth + Key Vault for auth/secrets. |
+| ⑤ | **Ops & Tooling** | `bug-tracker` auto-creates GitHub issues from user reports. `Maestro` runs the autonomous pipeline that fixes those issues and opens PRs. |
+
+### Issue → Fix loop (the part this pipeline lives in)
+
+```mermaid
+flowchart LR
+    User["👤 User"]
+    BT["carespace-bug-tracker"]
+    Claude1["Claude Opus 4.5<br/><i>enhances</i>"]
+    GH["GitHub Issue<br/><i>in target repo</i>"]
+    Mae["Maestro<br/><i>autonomous pipeline</i>"]
+    PR["PR → develop"]
+
+    User -->|reports bug| BT
+    BT --> Claude1
+    Claude1 --> GH
+    GH -->|labeled 'pipeline'| Mae
+    Mae -->|investigate · plan · build · review · qa · ship| PR
+
+    style User fill:#0c4a6e,stroke:#0ea5e9,color:#fff
+    style BT fill:#3f1d5e,stroke:#a855f7,color:#fff
+    style Claude1 fill:#7c2d12,stroke:#ea580c,color:#fff
+    style GH fill:#1e3a8a,stroke:#3b82f6,color:#fff
+    style Mae fill:#3f1d5e,stroke:#a855f7,color:#fff
+    style PR fill:#14532d,stroke:#22c55e,color:#fff
+```
+
+### How a typical request flows
+
+**Clinician triages a new patient (carespace-ui → carespace-admin):**
+```
+Browser → Nginx → carespace-ui (CRACO build)
+  → Redux RTK Query → carespace-admin /v1/client/...
+    → AuthMiddleware (FusionAuth JWT)
+    → ContextMiddleware (tenant/user)
+    → ClientController.findAll()
+    → Prisma → PostgreSQL
+    → ResponseEnvelopeInterceptor wraps response
+  → RTK Query updates Redux store
+  → React re-renders patient list
+```
+
+**Patient takes a posture scan (carespace-ui → posture-engine):**
+```
+Browser camera → MediaPipe in carespace-ui (on-device pose extraction)
+  → carespace-ui uploads 4-view images to Azure Blob via carespace-admin
+  → carespace-admin queues "assessment" message on Azure Service Bus
+    → carespace-posture-engine ConsumerService picks it up
+    → ImageProcessorService fetches images (URL allowlist)
+    → MoveNet extracts COCO-17 keypoints
+    → PlumblineExtractorService → CalculationService
+    → classifyAllSegments / classifyAllFrontalSegments
+    → lookupPermutation (243-entry / 729-entry tables)
+    → ProducerService publishes result back to Service Bus
+  → carespace-admin consumer stores result via Prisma
+  → WebSocket notifies carespace-ui
+  → Posture report renders
+```
+
+**Patient runs ROM scan on mobile (mobile app → SDK → admin):**
+```
+User taps "Start Scan" in carespace-mobile-android
+  → embedded carespace-sdk RomScanWidget opens camera
+  → google_mlkit_pose_detection extracts pose per frame
+  → SDK calculates joint angles (Shoulder/Elbow/Hip/Knee, L+R)
+  → SDK posts session to carespace-admin /v1/rom/...
+    → Prisma writes RomSession + joint angles
+    → Returns mobilityScore
+  → SDK shows clinical report
+```
+
+**Clinical content lookup (carespace-ui → Strapi):**
+```
+carespace-ui needs exercise definitions
+  → axios call to Strapi /api/exercises?populate=*
+  → Strapi reads MySQL → returns JSON with related content
+  → Tailwind/Antd render exercise cards
+```
+
+**Bug reported by user (bug-tracker → GitHub → Maestro pipeline):**
+```
+User clicks "Report Bug" (chrome-extension or web form)
+  → carespace-bug-tracker /api/submit-bug
+    → prompt-sanitizer strips PII
+    → llm-service calls Claude Opus 4.5 with codebase-context.json
+    → Claude returns EnhancedBugReport (target repo, claudePrompt, etc)
+  → github-service creates issue in target repo
+  → clickup-service creates linked task
+  → outgoing webhooks fire (Slack, dashboards)
+  → If labeled "pipeline" → Maestro auto-triggers
+    → /pipeline skill clones the repo
+    → Reads CARESPACE_CONTEXT.md (this file)
+    → Runs investigate → think → plan → build → review → security → qa → ship
+    → Opens PR to develop
+```
+
+---
+
+## carespace-ui — Web Application (Frontend)
+
+**Repo:** carespace-ai/carespace-ui
+**Stack:** React 18.3, TypeScript 5.4, Ant Design 5.27, CRACO (NOT Vite despite README), Redux Toolkit 1.9, Playwright 1.56, TensorFlow.js + MediaPipe (pose estimation), i18next, Tailwind CSS, Styled Components, Storybook
+**Build tool:** CRACO + ESBuild + Webpack (custom splitChunks for antd, tensorflow, mediapipe, react vendor bundles)
+
+### Commands
+```bash
+npm install --legacy-peer-deps        # install (NODE_OPTIONS=--max_old_space_size=8192)
+npm start                              # craco start
+npm run build                          # craco build
+npm test                               # craco test (Jest)
+npm run lint                           # eslint, max-warnings 0 + custom carespace/* token rules
+npm run lint-fix                       # eslint --fix
+npm run test:e2e                       # Playwright (TEST_ENV=local|develop|staging)
+npm run storybook                      # port 6006
+```
+
+### Architecture — Strict Atomic Design
+
+```
+src/
+├── components/
+│   ├── atoms/        ~80+ dirs — Badge, Avatar, Modal, Loading, Logo, CommandPalette,
+│   │                   Icon (UntitledIcon), DatePicker, ExerciseCard, MetricCard,
+│   │                   EmptyStateMessage, Drawers, CountDownTimer, FlickeringGrid,
+│   │                   KeyboardShortcutsOverlay, AP transition primitives
+│   ├── molecules/    ~50+ dirs — FormComponents, WeeklyCalendar, AdherenceHeatmap,
+│   │                   ClinicalSummaryCard, MarkdownRenderer, MPImageCapture,
+│   │                   BottomSheet, OutcomeCorrelationChart, PostureComparisonCard,
+│   │                   RecommendationCard, RecurrencePicker, DraggableProgramCard
+│   ├── organisms/    ~35+ dirs — OAdminTriageDashboard, ProgramFlow, RehabFlow, RomFlow,
+│   │                   OPostureDetailView, OBodyModel3D, OPosture3DViewer,
+│   │                   OPhotogrammetryCapture/Viewer, VideoPoseEstimator,
+│   │                   VirtualAgendaView, BulkActionToolbar, EvaluationResultsModal,
+│   │                   RecommendationsList
+│   ├── templates/    sparse usage
+│   └── pages/        ~70+ — PatientDashboard, AdminUnassignedPatients, AdminRegisteredPatients,
+│                       AdminConsentFormPatients, NewPatients, PendingReview, Reviewed,
+│                       OutOfParams, EscalationRequired, FollowUpRequired, PostureScan,
+│                       PostureCaptures, PostureSummaryMobile, RomScan/Summary/Programs,
+│                       Rehab, Settings, Reports, MyReport, OrganizationalReporting,
+│                       AdminSDKKeys, ConsultationMode, DesignSystem, SDK, UserDetailsModal
+├── routers/          Admin.tsx, SuperAdmin.tsx, Patient.tsx, Public.tsx, Private.tsx, SDK.tsx, routers.ts
+├── stores/           Redux Toolkit slices (see below)
+├── services/         API clients (RTK Query)
+├── api/              REST clients
+├── hooks/            custom hooks (useTypedDispatch, useTypedSelector)
+├── styles/           design-system.css, tokens/{primitives,colors,semantic,layout,polish}.css,
+│                     themes/{default,light,dark,vibrant}.css, antd-theme.ts
+├── icons/            UntitledIcon system (108+ migrated icons)
+├── config/navigation/  admin.tsx, superAdmin.tsx, user.tsx (sidebar config)
+├── providers/        ThemeProvider (dark mode)
+├── poseestimator/    MediaPipe + TensorFlow ML pipeline (controller, rom, rehab, performance, assets)
+├── workers/          Web workers
+└── i18n.ts           i18next setup
+```
+
+### Path Aliases (~48 total, always use these — never `../../`)
+
+```
+@atoms/*       → src/components/atoms/*
+@molecules/*   → src/components/molecules/*
+@organisms/*   → src/components/organisms/*
+@pages/*       → src/components/pages/*
+@templates/*   → src/components/templates/*
+@components/*  → src/components/*
+@stores/*      → src/stores/*
+@services/*    → src/services/*
+@hooks/*       → src/hooks/*
+@contexts/*    → src/contexts/*
+@utils/*       → src/utils/*
+@routers/*     → src/routers/*
+@constants/*   → src/constants/*
+@config/*      → src/config/*
+@providers/*   → src/providers/*
+@styles/*      → src/styles/*
+@strapi        → src/Strapi.ts
+@carespace-icons/* → src/icons/*
+@controller/*  → src/poseestimator/controller/*
+@rom/*         → src/poseestimator/rom/*
+@rehab/*       → src/poseestimator/rehab/*
+@performance/* → src/poseestimator/performance/*
+@assets        → src/poseestimator/assets/*
+@screens/*     → src/screens/*
+@common/*      → src/common/*
+@test-utils/*  → src/test-utils/*
+@types/*       → src/types/*
+@sdk/*         → sdk/*
+@demo/*        → src/demo/*
+@workers/*     → src/workers/*
+```
+
+### Redux Slices (organized by feature)
+
+```
+@stores/clinical/        — rom, rehab, performance, painAssessment, functionalGoals
+@stores/tools/           — coachRom, coachRehab, coachPerformance
+@stores/patients/triage/ — newPatients, pendingReview, reviewed, outOfParams, escalationRequired, followUpRequired
+@stores/patients/admin/  — adminDashboardPatient
+@stores/posture/         — postures, postureAnalysis, postureAnalytics, +6 sub-slices
+@stores/activity/        — activityStream, contacts
+@stores/shared/          — user, userManagement, adminManagement, settings, patientDetail, onBoard, consentForms
+@stores/content/         — reports, myLibrary, survey
+@stores/dashboard/       — dashboard, dashboardPreferences
+@stores/scan             — scan operations
+```
+
+**RTK Query APIs:** settingsApi, surveyApi, userManagementApi, reportsApi, programsApi, rehabApi, romApi, recommendationsApi, preferenceApi, adminGroupsApi
+
+**Always use typed hooks:**
+```typescript
+import { useTypedDispatch, useTypedSelector } from '@stores/index';
+```
+
+### Key Routes (from `src/routers/routers.ts`)
+
+```typescript
+ROOT: '/'
+NEW_PATIENTS: '/admin/patients/new'
+REGISTEREDPATIENTS: '/admin/patients/registered'
+UNASSIGNEDPATIENTS: '/admin/patients/unassigned'
+ESCALATIONREQUIRED: '/admin/patients/escalation-required'
+FOLLOWUPREQUIRED: '/admin/patients/follow-up-required'
+PENDINGREVIEW: '/admin/patients/pending-review'
+REVIEWED: '/admin/patients/reviewed'
+ALLPATIENTS: '/admin/patients'
+USERPATIENTVIEW: '/:userId/dashboard'
+USERREPORTSUMMARY: '/:userId/report/summary'
+USERROMSCAN: '/:userId/rom/scan'
+USERROMSUMMARY: '/:userId/rom/summary'
+POSTURE_ANALYTICS_SCAN: '/:userId/rom/posture-analytics/scan'
+POSTURE_ANALYTICS_SUMMARY: '/:userId/rom/posture-analytics/summary'
+SETTINGS_*: '/settings/{general|appearance|integrations|templates|plans|content-library|advanced|groups}'
+ADMIN_SDK_API_KEYS: '/admin/sdk/api-keys'
+```
+
+**Always import route constants from `@routers/routers` — never hardcode paths.**
+
+### Where to look by issue type
+
+| Issue type | Look in |
+|-----------|---------|
+| UI bug on a specific page | `src/components/pages/{Feature}/`, `src/components/organisms/O{Feature}/` |
+| Component bug | `src/components/atoms/{Component}/` or molecules/organisms |
+| Routing / navigation | `src/routers/routers.ts`, `src/routers/{Admin,Patient,SuperAdmin,Private,Public,SDK}.tsx`, `src/config/navigation/{admin,superAdmin,user}.tsx` |
+| State management bug | `src/stores/{clinical,patients,posture,shared,content,activity,dashboard,tools,scan,settings}/{slice}/` |
+| API call bug | `src/services/`, `src/api/`, RTK Query in `src/stores/**/*Api.ts`, axios in `src/utils/Api`, Strapi in `src/Strapi.ts` |
+| Styling / theme | `src/styles/design-system.css`, `src/styles/tokens/{primitives,colors,semantic,layout,polish}.css`, `src/styles/themes/{default,light,dark,vibrant}.css`, `src/styles/antd-theme.ts`, `src/Changes.css`, `tailwind/tailwind.config.js` |
+| Auth bug | `src/auth/`, `src/routers/Private.tsx` (react-auth-kit) |
+| Icon bug | `src/components/atoms/Icon/UntitledIcon.tsx` (always import from `@atoms/Icon`) |
+| Translation | `src/locales/`, `src/i18n.ts`, `scripts/i18n-cli.js`, run `npm run i18n:validate` |
+| Tests | Playwright E2E in `e2e/` and `tests/`, Jest unit in `src/**/*.test.tsx`, a11y via `@axe-core/playwright` |
+| ML / pose detection | `src/poseestimator/{controller,rom,rehab,performance,assets}/`, MediaPipe assets in `public/holistic/` |
+| CommandPalette (Cmd+K) | `src/components/atoms/CommandPalette/` (state machine in `reducer.ts`) |
+
+### Critical conventions
+
+- **Atomic Design strict** — never put complex logic in atoms
+- **Function components only** — no class components
+- **Always create Storybook stories** for new atoms/molecules
+- **Linting is strict** — `max-warnings 0`, hardcoded colors/spacing/typography are linted out
+- **CommandPalette** (Cmd+K) is a 5-mode state machine in `src/components/atoms/CommandPalette/`
+- **AppLayoutWrapper** is the unified layout for all roles (replaced AdminLayout, MLayout)
+- **Sidebar** docs at `docs/designs/SIDEBAR_MESSAGE_FLOW.md` — read before touching sidepanel/background/content scripts
+
+---
+
+## carespace-admin — Backend API
+
+**Repo:** carespace-ai/carespace-admin
+**Package name:** `carespace-backend` (despite repo name)
+**Stack:** NestJS 11, TypeScript, Prisma 6 (PostgreSQL), FusionAuth, Azure (Key Vault, Blob Storage, Service Bus, Communication Email), Pino, New Relic, Swagger
+**AI:** LangChain + OpenAI (in `lets-move/openai/`)
+**Misc:** Puppeteer (PDF), Sharp (images), ExcelJS, socket.io
+
+### Commands
+```bash
+npm install
+npm run build                  # nest build
+npm run start                  # NODE_ENV=localhost
+npm run start:dev              # nest start --watch
+npm run start:prod             # prisma migrate deploy then node dist/main
+npm run lint                   # eslint --fix
+npm test                       # jest
+npm run test:unit              # excludes e2e
+npm run test:e2e
+npm run test:cov               # coverage
+npm run validate               # full gate (lint + tests)
+```
+
+### Architecture — modular monolith
+
+`src/main.ts` global setup:
+- **URI versioning:** `/v1` default, `/v2` opt-in
+- **Legacy rewrites:** unprefixed routes → `/v1/*` with Deprecation/Sunset headers (sunset 2026-03-31)
+- **Global ValidationPipe** (whitelist + forbidNonWhitelisted + transform)
+- **Global filters:** `GlobalExceptionFilter` + `PrismaClientExceptionFilter`
+- **Global interceptors:** `ResponseEnvelopeInterceptor` (v1 unwraps `data`, v2 keeps envelope) + Pino `LoggerErrorInterceptor`
+- **Global guards:** `ApiKeyGuard` (service-to-service) + `RolesGuard` (RBAC)
+- **CORS:** `origin: '*'` ⚠️ **flag for prod review**
+- **Body limit:** 50mb JSON
+- **Swagger:** at `/doc` (dev only)
+
+`src/app.module.ts`:
+- Global Config, Schedule, Cache, Throttler (short=20/s, medium=100/10s)
+- nestjs-pino with OpenTelemetry trace correlation
+- **Middleware chain:** `AuthMiddleware` → `ContextMiddleware` → `ClientMiddleware` → `UserMiddleware`
+
+**Path aliases:** `@auth`, `@user`, `@client`, `@evaluation`, `@rom`, `@activitystream`, `@lets-move`, `@settings`, `@common`, `@services`, etc.
+
+### Feature modules (`src/`)
+
+```
+auth (+fusionauth)              — FusionAuth-backed auth + JWT (jsonwebtoken + jwks-rsa)
+user (+userActivity)            — user/profile management
+client                          — patient management (PHI)
+evaluation                      — clinical evaluations
+  ├── healthSign
+  ├── medicalHistory
+  └── painAssessment
+rom                             — Range of Motion assessments
+  ├── mobilityScore
+  └── mobilityReport
+postureAnalytics                — posture session analytics + mobilityReport
+poseEstimation                  — pose endpoint
+bodyComposition                 — body comp measurements
+lets-move                       — exercise programs ("LetsMove" sessions)
+  ├── template
+  └── openai                    — LangChain + OpenAI integration
+romTemplate                     — ROM templates
+survey (+template)              — survey responses + templates
+activitystream                  — patient activity feed
+  ├── History
+  ├── Evaluation
+  ├── Feedback
+  └── Post
+calendar-program                — exercise programs on calendar
+scheduled-activity              — cron jobs
+calendar-tasks                  — patient tasks
+plans                           — subscription plans
+settings                        — user/org settings
+  ├── consentPolicy
+  ├── plansSettings
+  ├── functionalGoalsSettings
+  └── preExistingConditionsSettings
+admin-group                     — clinic groups + permissions
+vr                              — VR session integration
+reports                         — report generation
+auditReports                    — HIPAA audit logs
+stats                           — statistics
+metrics                         — analytics
+storage                         — Azure Blob storage (PHI files)
+webhook                         — outbound webhooks
+migration                       — data migration scripts
+dataRetention                   — HIPAA data retention rules
+healthcheck                     — health endpoints
+common                          — shared utilities
+services                        — cross-cutting (KeyVaultService, etc)
+context                         — request context (user, org, client tenant)
+dto                             — Prisma-generated DTOs (auto, do not edit by hand)
+```
+
+### Database — Prisma 6 with split schema
+
+- Main schema: `prisma/schema.prisma`
+- Per-domain models: `prisma/models/*.prisma`
+  - `user.prisma` — `User`, `Profile` (PHI: email, name, phone, birthDate, gender, isPregnant, height/weight, languages, consent), `UserRole` enum (`superadmin | admin | user`)
+  - `client.prisma` — patient records (tenant scope)
+  - `evaluation.prisma` — clinical evaluations + sub-records
+  - `rom.prisma`, `mobilityscore.prisma`, `postureanalytics.prisma`, `poseestimation.prisma`
+  - `bodycomposition.prisma`, `performance.prisma`, `functionalgoals.prisma`, `preexistingconditions.prisma`
+  - `activitystream.prisma`, `letsmove.prisma`, `plans.prisma`, `survey.prisma`, `calendar.prisma`
+  - `vr.prisma`, `reports.prisma`, `stats.prisma`, `settings.prisma`, `adminGroup.prisma`
+  - `storageAccessAudit.prisma` — Azure Blob access audit (HIPAA)
+  - `migrations.prisma` — internal migration tracking
+
+**Generators:**
+- `@prisma/client`
+- `@brakebein/prisma-generator-nestjs-dto` (outputs to `src/dto/`)
+- `zod-prisma-types`
+- `prisma-docs-generator`
+
+**Pagination:** `prisma-extension-pagination`
+**Seed:** `prisma/seed.ts`
+
+### Auth pattern
+
+- **IdP:** FusionAuth (`@fusionauth/typescript-client`, `src/fusionauth/`)
+- **JWT:** validated via `jsonwebtoken` + `jwks-rsa`
+- **Global guards:** `ApiKeyGuard` (service-to-service) + `RolesGuard` (RBAC: `superadmin | admin | user`)
+- **Public routes** opt out via `@Public` decorator (search in `src/auth/`)
+- **Passport:** wired via `@nestjs/passport`
+- **Throttling:** global ThrottlerModule (20/s short, 100/10s medium)
+
+### HIPAA / PHI handling
+
+**PHI lives in:** `Profile`, `Client`, `Evaluation*`, `BodyComposition`, `Performance`, `MobilityScore`, `PoseEstimation`, `PostureAnalytics`, `Survey`, `ActivityStream*`, `Reports`
+
+**Critical rules:**
+- **Secrets:** Azure Key Vault loaded at boot via `KeyVaultService`. Required env via `ConfigService.getOrThrow`. See `docs/env.example.md`
+- **Storage audit:** every Azure Blob access tracked in `prisma/models/storageAccessAudit.prisma`
+- **Audit reports:** dedicated module at `src/auditReports/`
+- **Data retention:** `src/dataRetention/` (likely scheduled deletion)
+- **Consent:** `Profile.consentPolicyRead` / `consentPolicyAcceptedAt` + `src/settings/consentPolicy/`
+- **⚠️ Logging concern:** Pino `customSuccessMessage`/`customErrorMessage` in `app.module.ts` log `req.url` + `req.headers.referer` — **PHI in query strings would leak to logs**
+- **⚠️ CORS wide open** (`origin: '*'`) — flag for prod review
+- **Compliance infra:** New Relic APM, Azure Service Bus (async), Azure Communication Email, OpenTelemetry trace IDs
+
+### Where to look by issue type
+
+| Issue type | Look in |
+|-----------|---------|
+| Auth/login bugs | `src/auth/`, `src/fusionauth/` |
+| Roles / permissions | `src/auth/guards/roles.guard.ts`, `ApiKeyGuard` |
+| Patient (client) data | `src/client/` + `prisma/models/client.prisma` |
+| User/profile (PHI) | `src/user/` + `prisma/models/user.prisma` |
+| Clinical evaluations | `src/evaluation/` (+ healthSign/medicalHistory/painAssessment) + `prisma/models/evaluation.prisma` |
+| API endpoint bugs | `src/<feature>/<feature>.controller.ts` (global behavior in `src/main.ts`) |
+| Validation / DTOs | `src/<feature>/dto/*` (class-validator + class-transformer); `src/common/validation/ValidateParamsId.pipe.ts` |
+| Response shape / envelope | `src/common/http/responseEnvelope.interceptor.ts` (`convertToLegacyV1` in `main.ts`) |
+| Error handling | `src/common/errors/` (`GlobalExceptionFilter`, `PrismaClientExceptionFilter`) |
+| Database queries / Prisma | `src/<feature>/<feature>.service.ts`; schema in `prisma/schema.prisma` + `prisma/models/*.prisma`; migrations in `prisma/migrations/` |
+| Business logic | `src/<feature>/<feature>.service.ts`; cross-cutting in `src/services/` |
+| HIPAA / audit / PHI access | `src/auditReports/`, `src/dataRetention/`, `src/storage/` + `prisma/models/storageAccessAudit.prisma` |
+| Scheduled jobs / cron | search `@Cron`; `src/calendar-program/`, `src/scheduled-activity/`, `src/calendar-tasks/`, `src/dataRetention/` |
+| Webhooks | `src/webhook/` |
+| AI / OpenAI / LangChain | `src/lets-move/openai/` |
+| Config / secrets / Key Vault | `src/services/` (search `KeyVaultService`); `docs/env.example.md` |
+| Throttling / rate-limit | `src/app.module.ts` (`ThrottlerModule.forRoot`) |
+| CORS / security headers | `src/main.ts` (currently `origin: '*'`) |
+| Logging leaks (PHI in URLs) | Pino custom log messages in `src/app.module.ts` |
+
+---
+
+## carespace-posture-engine — Posture Analysis Backend
+
+**Repo:** carespace-ai/carespace-posture-engine
+**Stack:** NestJS 10, TypeScript 5.3, `@tensorflow/tfjs-node` + MoveNet, `sharp`, `@azure/service-bus`, Jest
+**NOTE:** README mentions Prisma/PostgreSQL but persistence is REMOVED — service is stateless and queue-driven.
+
+### Purpose
+Clinical posture assessment via **Kendall plumb-line methodology**:
+- **Lateral:** head/shoulder/upperBody/pelvis/knee → F/A/B (Forward/Aligned/Back)
+- **Frontal:** head/shoulder/trunk/pelvis/knee/ankle → L/C/R (Left/Center/Right)
+- Lookup syndromes from **243-entry lateral** and **729-entry frontal** permutation tables
+
+### Commands
+```bash
+npm install
+npm run start:dev       # port 3001 (APP_PORT)
+npm run build && npm run start:prod
+npm test
+```
+**Env:** `APP_PORT`, `NODE_ENV`, `CORS_ORIGINS`, Azure Service Bus connection vars.
+
+### Architecture — QUEUE-DRIVEN, NOT REST
+**The only HTTP route is `GET /health`.** Real work flows through Azure Service Bus:
+
+```
+Service Bus
+  → ConsumerService → MessageHandlerService → PostureProcessingService
+       → ImageProcessorService     (URL fetch + MoveNet keypoints)
+       → PlumblineExtractorService (keypoints → plumb-line data)
+       → CalculationService → PlumblineEngine
+            → classifyAllSegments / classifyAllFrontalSegments
+            → lookupPermutation / lookupFrontalPermutation
+  → ProducerService (result → bus)
+```
+
+**Two ingest message types:**
+- `assessment` — downloads image URL, runs MoveNet
+- `ingest` — pre-extracted COCO-17 keypoints, skips MoveNet
+
+### Key files
+- `src/modules/queue/{consumer,message-handler,producer}.service.ts`
+- `src/modules/processing/processing.service.ts` — `processImage`, `processKeypoints`, `validateImageUrl`
+  - **Hostname allowlist:** `*.blob.core.windows.net`, `*.carespace.ai`, `localhost`, `127.0.0.1`
+- `src/modules/image/image-processor.service.ts` — `fetchImageFromUrl`, `extractKeypoints` (sharp + MoveNet)
+- `src/modules/image/plumbline-extractor.service.ts`
+- `src/modules/image/{image-annotation,image-cache,image-storage}.service.ts` — Azure Blob
+- `src/modules/calculation/engines/plumbline.engine.ts`
+- `src/assessment/{classifySegments,frontalClassifySegments,permutationTable,frontalPermutationTable}.ts`
+- `src/utils/plumbLineCore.ts`
+- `src/types/{coco,messages,postureScanResult}.ts`
+
+### Where to look by issue type
+| Issue | Look in |
+|-------|---------|
+| Image fetch / decode / URL rejected | `image-processor.service.ts`, `validateImageUrl` |
+| MoveNet inference / keypoints | `image-processor.service.ts` `extractKeypoints` |
+| Plumb-line extraction | `plumbline-extractor.service.ts`, `utils/plumbLineCore.ts` |
+| Wrong syndrome classification | `assessment/*ClassifySegments.ts`, `*PermutationTable.ts` |
+| Result shape / API response | `types/postureScanResult.ts`, `types/messages.ts` |
+| Queue errors | `modules/queue/*.service.ts` |
+
+---
+
+## carespace-3d-body-service — 3D Body Service
+
+**Repo:** carespace-ai/carespace-3d-body-service
+**Stack:** Python, FastAPI 0.115 + Uvicorn 0.34, PyTorch + torchvision, Pillow, opencv-python-headless, NumPy, Pydantic v2, huggingface-hub, pyrender, timm, einops, roma, loguru
+**Wraps:** Meta's [SAM-3D Body](https://huggingface.co/facebook/sam-3d-body-dinov3) model (cloned via `setup.sh` into `./sam-3d-body/`)
+
+### Purpose
+Single-image 3D body mesh reconstruction. Given a base64 RGB image, returns SMPL-style mesh vertices/faces, 2D keypoints, camera translation, focal length, and bbox.
+
+### Commands
+```bash
+# One-time setup
+pip install torch torchvision
+./setup.sh                       # clones sam-3d-body repo, installs xtcocotools/pycocotools
+pip install -r requirements.txt
+
+# Run
+./run_dev.sh                     # uvicorn
+docker compose up                # CUDA 12.4 base image
+```
+
+**Env:**
+- `SAM3D_DEVICE` (`cuda`/`mps`/`cpu`, auto-detected)
+- `SAM3D_HF_REPO` (default `facebook/sam-3d-body-dinov3`)
+- `CORS_ORIGINS` (defaults: `localhost:3000`, `develop/staging/app.carespace.ai`)
+
+**No README, no pyproject.toml, no automated tests in repo.**
+
+### Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | `{"status":"ok","service":"sam3d-body"}` |
+| `POST /api/v1/jobs` | **Async submit.** Body: `{ image: <base64 or data-URL>, gender?: "male"\|"female" }`. Decodes, resizes to max 512px, spawns daemon thread running `predict()`. Returns `{job_id, status: "processing"}` |
+| `GET /api/v1/jobs/{job_id}` | Poll status: `processing` / `complete` / `error`. **In-memory store** (`_jobs` dict) — lost on restart, no TTL |
+| `POST /api/v1/reconstruct` | **Legacy synchronous.** 400 bad image, 422 no person detected, 500 inference failure |
+
+### Response shape (`app/schemas.py`)
+```python
+vertices: list[list[float]]    # Nx3
+faces: list[list[int]]         # Mx3
+keypoints_2d: list[list[float]]
+camera_translation: [tx, ty, tz]
+focal_length: float
+bbox: [x1, y1, x2, y2]
+```
+
+### Key files
+- `app/main.py` — FastAPI app, CORS, lifespan model load, in-memory job store, all routes
+- `app/model.py` — `load_model()` (singleton `_estimator`), `get_device()`, `predict()`, sys.path injection for `sam-3d-body`
+- `app/schemas.py` — Pydantic request/response
+- `setup.sh` — clones upstream sam-3d-body
+- `run_dev.sh` — uvicorn launcher
+- `Dockerfile`, `docker-compose.yml`
+- `requirements.txt`
+
+### Notes / quirks
+- **MPS (Apple Silicon) does NOT support float64** required by the MHR TorchScript model — `model.py` forces main model to CPU and only uses MPS/GPU for human detector + FOV estimator
+- Upstream `load_sam_3d_body_hf` ignores its `device` kwarg → service calls `_hf_download` then `load_sam_3d_body(..., device=...)` directly
+- `predict()` only takes the **first detected person** from a list result
+- Avoids importing `notebook/utils.py` from sam-3d-body (pulls in pyrender/OpenGL, broken on headless/macOS)
+- **Job store is in-memory + per-thread, NOT horizontally scalable**
+
+### Where to look by issue type
+| Issue | Look in |
+|-------|---------|
+| Image decode / resize | `app/main.py` ~lines 110-128 (`create_job`) and ~186-202 (`reconstruct`) |
+| Model loading / device / HF download | `app/model.py` `load_model()` + `get_device()` |
+| "No person detected" / inference fail | `app/model.py` `predict()` + `_extract_numpy/_extract_scalar` |
+| API response shape | `app/schemas.py`, `ReconstructResponse(**result)` in `main.py` |
+| Error handling | `main.py` — 400/422/500 paths, async errors written to job dict |
+| Job lifecycle / memory leak | `_jobs`, `_jobs_lock`, `_set_job`, `_get_job`, `_run_inference_job` in `main.py` |
+| CORS / hosting | `cors_origins` block in `main.py` (override via `CORS_ORIGINS`) |
+
+---
+
+## carespace-strapi — Headless CMS
+
+**Repo:** carespace-ai/carespace-strapi
+**Stack:** Strapi 5.21.0 on Node 18+, React 18 admin, MySQL (`mysql2`) primary / `better-sqlite3` dev, Azure Blob upload provider
+**Deploy:** Azure Container Registry (`acr.sh`, `dockerfile`, `docker-compose.yml`, `bitbucket-pipelines.yml`)
+
+### Purpose
+Content backbone for clinical reference data. **Strapi owns:** static/reference clinical content library — exercise definitions, joint anatomy, ROM scan types, program templates, recommendation catalogs, survey templates, diagnostic codes, pain/functional taxonomies, therapist directory, frontend translation strings. Editable by content team via Strapi admin UI.
+
+### Commands
+```bash
+npm run develop                 # Strapi dev server
+npm run start                   # production
+npm run build                   # build admin
+```
+
+### Top-level structure
+```
+src/
+├── admin/         — admin UI customizations
+├── api/           — content types (60+, see below)
+├── components/    — reusable component schemas
+├── extensions/    — plugin extensions
+└── index.js       — Strapi bootstrap
+config/, database/, public/, types/
+```
+
+### Content models (60+ in `src/api/`, auto-exposed at `/api/{kebab-plural}`)
+
+**Exercise library:**
+exercise, exercise-category, exercise-tag, exercise-position, exercise-complexity, exercise-intensity-level, exercise-energy-expenditure, exercise-target-muscle-group, exercise-common-mistake, exercise-modification-option (+ levels), exercise-progression-step, exercise-warm-up-suggestion, exercise-cool-down-recommendation, exercise-feedback-point, exercise-exclusion, equipment, tool
+
+**Anatomy / ROM:**
+joint, body-point, body-region, landmark, posture-joint, posture-alignment, posture-analytic, omni-rom-joint, omni-rom-exercise (+ group), omni-rom-program (+ exercise), omni-rom-scan-type, omni-rom-reference
+
+**Programs / templates:**
+program-template, program-exercise-template, program-experience-level, program-subgoal, program-time-availability, program-workout-type, premium-plan, skill
+
+**Clinical / intake:**
+diagnose-code, medical-history, health-sign, informed-consent, audit-classification, aggravating-factor, relieving-factor, pain-cause, pain-duration, pain-frequency, pain-status, functional-goal (+ reason), reason
+
+**Recommendations:**
+recommendation, recommendation-audience, recommendation-category, recommendation-persona, recommendation-type
+
+**Activity stream:**
+activity-stream-action, activity-stream-feedback, activity-stream-progress
+
+**Surveys:**
+survey-template, survey-template-question, survey-template-question-option
+
+**Misc:**
+therapist, availability, frontend-translation, tag
+
+### API endpoints
+Strapi auto-generates REST per content type at `/api/{kebab-plural}`:
+- `/api/exercises`, `/api/joints`, `/api/omni-rom-programs`
+- `/api/recommendations`, `/api/frontend-translations`
+- `/api/survey-templates`
+- `/api/auth/*` (via `users-permissions` plugin)
+
+### Notable plugins
+- `@strapi/plugin-documentation` (Swagger)
+- `@strapi/plugin-users-permissions`
+- `strapi-cache`, `strapi-health-plugin`
+- `strapi-plugin-multi-select`, `strapi-plugin-oembed`
+- `@sklinet/strapi-plugin-video-field`
+- `strapi-provider-upload-azure-storage` (Azure Blob, NOT local disk)
+
+### Strapi vs carespace-admin (CRITICAL distinction)
+- **Strapi** owns: clinical reference content (exercise definitions, joints, recommendations, survey templates, diagnose codes). Read-mostly. Editable by content team.
+- **carespace-admin** owns: live operational data — patient records, scan results, sessions, assignments, billing, user/clinic management. References Strapi content by ID but isn't editable as CMS content.
+
+If an issue mentions exercise definitions, joint anatomy, recommendation catalogs, survey questions, or diagnose codes — fix it in Strapi, not carespace-admin or carespace-ui.
+
+---
+
+## Mobile Apps
+
+### carespace-mobile-android (Native Kotlin)
+- **Package:** `com.nexturn.carespaceai`
+- **Build:** Gradle KTS (`build.gradle.kts`)
+- **Source:** `app/src/main/java/com/nexturn/carespaceai/`
+- **Layouts:** `app/src/main/res/layout*` (XML)
+- **Resources:** `app/src/main/res/{drawable,color,font,values}/`
+
+### carespace-mobile-ios (Native Swift)
+- **Project:** `CareSpaceMobile.xcodeproj` / `CareSpaceMobile.xcworkspace`
+- **Pods:** `Podfile` / `Podfile.lock` (CocoaPods)
+- **Source:** `CareSpaceMobile/`
+- **Build:** `pod install && xcodebuild -workspace CareSpaceMobile.xcworkspace -scheme CareSpaceMobile`
+
+### carespace_mobile (Legacy Flutter — Dart 2.x)
+- **Note:** Old Flutter app, Dart SDK 2.1, http 0.12, rxdart 0.18 — **legacy, do not modify unless explicitly asked**
+- **Source:** `lib/main.dart`, `lib/src/`
+
+### carespace-kiosk (Modern Flutter — for Correctional Facilities)
+- **Stack:** Flutter, Dart 3.10, Riverpod 3, go_router 14, sqflite_sqlcipher (encrypted SQLite), webview_flutter, mobile_scanner (QR), flutter_secure_storage
+- **Purpose:** Patient check-in and wellness companion for correctional facility kiosks
+- **Source:** `lib/{app,core,features,l10n,shared}/`, `lib/main.dart`
+- **Build:** `flutter pub get && flutter build apk` (or `ios`)
+
+### Where to look (mobile)
+- **Pose detection / camera** → likely uses MediaPipe (also embedded via SDK)
+- **Auth** → `core/auth` or similar
+- **API client** → `core/api` or `core/network`
+- **Encrypted local DB** → kiosk uses `sqflite_sqlcipher`
+- **Navigation** → `go_router` config (kiosk) or Activity/Fragment routing (Android)
+
+---
+
+## carespace-sdk — ROM Assessment SDK
+
+**Repo:** carespace-ai/carespace-sdk
+**Package:** `carespace_rom_sdk` v1.0.0 (single Flutter package, NOT a multi-package monorepo despite `packages/` dir)
+**Stack:** Dart / Flutter module SDK
+**Pose detection:** Google ML Kit (`google_mlkit_pose_detection ^0.11.0`), camera-only, no external hardware
+
+### Purpose
+AI-powered ROM (Range of Motion) assessments. Phase 1 = 8 exercises (Shoulder/Elbow/Hip/Knee Flexion, L+R).
+
+### Phase 1 exercises (8 joints)
+| Joint | Sides | Normal Range |
+|-------|-------|--------------|
+| Shoulder Flexion | L+R | 0°–180° |
+| Elbow Flexion | L+R | 0°–145° |
+| Hip Flexion | L+R | 0°–120° |
+| Knee Flexion | L+R | 0°–135° |
+
+### Requirements
+- iOS 15.6+
+- Android API 24 (Android 7.0)+
+- Flutter 3.10+
+- Dart 3.0+
+
+### Repo structure
+```
+lib/                    — root Flutter package (entry: lib/carespace_rom_sdk.dart)
+├── carespace_rom_sdk.dart   — package barrel
+├── main.dart                — example/dev entry
+└── src/
+    ├── rom_scan_widget.dart       — primary widget host apps mount
+    ├── carespace_sdk_widget.dart  — wrapper widget
+    ├── models/
+    ├── pose/
+    ├── screens/
+    └── services/
+packages/flutter/       — Flutter sub-package with own android/ios/lib/assets/example
+                          + ARCHITECTURE.md + gap-analysis doc
+android/                — native Android (Kotlin) host integration
+android_integration/    — Android integration guide
+ios/                    — native iOS (Swift/UIKit) host integration
+ios_integration/        — iOS integration guide
+example/, test/
+```
+
+### How clients consume it (NOT on pub.dev)
+
+Three integration paths:
+
+1. **Flutter app** — local path dep:
+   ```yaml
+   carespace_rom_sdk:
+     path: ../carespace-rom-sdk
+   ```
+   OR git ref:
+   ```yaml
+   carespace_rom_sdk:
+     git:
+       url: https://github.com/carespace-ai/carespace-rom-sdk.git
+       ref: v1.0.0
+   ```
+2. **Native iOS** — Flutter module embedded in Swift/UIKit
+3. **Native Android** — Flutter module embedded in Kotlin
+
+### Public API
+- `CareSpaceAuth.login(baseUrl, username, password, inviteCode)`
+- `RomScanWidget` — primary widget for ROM scanning UI
+
+### Key dependencies
+`google_mlkit_pose_detection ^0.11.0`, `camera ^0.10.5+9`, `dio ^5.4.0`, `permission_handler ^11.3.0`, `video_player ^2.8.0`, `audioplayers ^6.0.0`
+
+### Docs
+- `README.md`, `INTEGRATION.md`, `QUICKSTART.md`, `DEVELOPER_GUIDE.md`, `SECURITY.md`
+- `android_integration/`, `ios_integration/` — platform-specific guides
+
+---
+
+## Cross-cutting Concerns
+
+### HIPAA Compliance
+- **Never log PHI** — names, DOB, medical records, biometric data
+- **Audit logs required** for all PHI mutations (HIPAA §164.312(b))
+- **Encryption at rest** — Azure Blob (admin), sqflite_sqlcipher (kiosk)
+- **TLS in transit** — all API calls
+- Look for `auditReports/` (admin), data retention rules in `dataRetention/`
+
+### Auth
+- **FusionAuth** for web (carespace-admin → src/fusionauth/)
+- **react-auth-kit** for ui (Private.tsx wrapper)
+- **JWT** for SDK / mobile (`dart_jsonwebtoken`)
+
+### Internationalization
+- Frontend uses i18next + react-i18next
+- Translation files in `src/locales/{en,es,...}.json`
+- Strapi has `frontend-translation` content type for clinician-managed strings
+- Run `npm run i18n:validate` to catch missing keys
+
+### Observability
+- **OpenTelemetry** in carespace-ui (`@opentelemetry/*` deps) and carespace-admin
+- **NewRelic** in carespace-admin (`src/newrelic.ts`)
+- Trace IDs flow through requests
+
+---
+
+## Issue Triage Quick Reference
+
+When you receive an issue, check these in order:
+
+1. **Read the AI-Enhanced section** of the issue body — it tells you what files to check
+2. **Read the Claude Code Fix Instructions** — usually 4-6 specific steps
+3. **Check the `Repository` field in Environment** — tells you which repo to work in
+4. **Check the URL in `Reproduction Steps`** — tells you which page/feature
+
+### Common patterns
+
+| Issue says... | Likely fix in... |
+|---------------|-----------------|
+| "screen / page / button / form" | carespace-ui — `src/components/pages/{Feature}/` |
+| "navigation / sidebar / menu" | carespace-ui — `src/config/navigation/`, `src/routers/` |
+| "API returns / 500 / 401" | carespace-admin — `src/{module}/{module}.controller.ts` |
+| "wrong angle / pose / posture" | carespace-posture-engine — `src/modules/calculation/` or `src/assessment/` |
+| "exercise / clinical content / survey" | carespace-strapi — `src/api/{content-type}/` |
+| "ROM scan / camera / joint angle" | carespace-sdk — `packages/flutter/lib/` |
+| "Android only" | carespace-mobile-android — `app/src/main/java/com/nexturn/carespaceai/` |
+| "iOS only" | carespace-mobile-ios — `CareSpaceMobile/` |
+| "kiosk / check-in / correctional" | carespace-kiosk — `lib/features/` |
+
+### Branch strategy
+- **All repos:** branch from `master` (or `main` if no `master`)
+- **PR target:** `develop` (always — never master directly)
+- **Pipeline branches:** `pipeline/issue-{N}-{timestamp}`
+
+### Don't modify
+- Auto-generated DTO files in `carespace-admin/src/dto/` (Prisma generates these)
+- `carespace_mobile` (legacy Flutter) unless explicitly asked
+- Any file with `// AUTO-GENERATED` header
+
+---
+
+## Glossary
+
+- **PHI** — Protected Health Information (HIPAA term)
+- **ROM** — Range of Motion (joint mobility assessment)
+- **Plumb-line / Kendall** — Posture assessment methodology comparing body landmarks against vertical
+- **Triage** — Patient state machine: new → pendingReview → reviewed → followUpRequired/escalationRequired/outOfParams
+- **OmniRom** — CareSpace's full-body ROM assessment program
+- **MediaPipe** — Google's pose detection library (used in browser, iOS, Android, kiosk via SDK)
+- **MoveNet** — TensorFlow pose detection model (used in carespace-posture-engine)
+- **CRACO** — Create React App Configuration Override (build tool for carespace-ui, NOT Vite despite README)
