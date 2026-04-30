@@ -432,15 +432,13 @@ gh issue comment "$META_ISSUE_NUMBER" \
 >   conceptual change. Less flexible than multi-gitter for our use case
 >   because Oracle stories produce *different* diffs per repo.
 >
-> See `docs/multi-repo-tools.md` (TODO) for the full evaluation. For MVP the
-> hand-rolled loop above is correct because we already have per-repo diffs
-> committed locally; we don't need a tool to "apply the same change
-> everywhere," we just need to push + PR each repo. The tools become
-> attractive for FR17 (group merge) and FR18 (group close) — multi-gitter
-> can do `multi-gitter status --branch feat/oracle-project-<slug>` and
-> `multi-gitter close --branch ...` against the whole group with one
-> command. Worth wiring into the meta-issue close handler in Phase 2 of the
-> sandbox roadmap.
+> See `docs/multi-repo-tools.md` for the full evaluation and
+> `skills/oracle-pipeline-lifecycle/` for the wired-up sibling skill that
+> wraps multi-gitter for FR15 (group status), FR17 (group merge), and FR18
+> (group close + prune). The hand-rolled loop above is correct here because
+> we already have per-repo diffs committed locally — we don't need a tool
+> to "apply the same change everywhere," we just need to push + PR each
+> repo. multi-gitter's value is in the lifecycle, not the implementation.
 
 ---
 
