@@ -36,10 +36,11 @@ Differences vs `pipeline/` at a glance:
 |---------------------------------|--------------------------------------------|
 | Trigger: single GitHub issue    | Trigger: `project:<X>` + `maestro-ready` user-story group |
 | Clones one repo                 | Clones every repo in `feature_intent.involved_repos` |
+| gstack loop runs ONCE for the issue | gstack loop (Investigate → Think → Plan → Build → Review → Security → QA) runs **per story**, scoped to that story's affected_modules |
 | One commit, one PR              | Atomic commit per story, one cumulative PR per affected repo |
 | Branch: `pipeline/issue-N-...`  | Branch: `feat/oracle-project-<slug>` per repo |
 | Targets `develop`               | Targets `main`, labeled `oracle-project`, `group:project-<slug>`, original `project:` label |
-| No scope guardrail              | Cumulative scope guardrail vs union of `affected_modules + new_files_needed` |
+| No scope guardrail              | Per-story scope guardrail + cumulative scope audit |
 | No structured output            | Emits `oracle.project.complete` JSON event via `repository_dispatch` to `carespace-ai/infra` |
 
 **CRITICAL FIRST STEP — DO THIS BEFORE ANYTHING ELSE:**
@@ -394,43 +395,142 @@ only in `/tmp/oracle-work/`.
 
 ---
 
-## Phase 1 — Story Iteration (the meat)
+## Phase 0.5 — Bootstrap Tests (per repo, only if missing)
 
-For each story in BMAD dependency order (from `stories-output.md`), run a
-compact build cycle.
+Before the story loop starts, for each cloned repo check whether a test
+suite exists. If not, bootstrap one — same logic as `pipeline/` Phase 3.5
+(detect framework, add minimal config, smoke-test imports). This runs ONCE
+at project start, not per story.
 
-```
-for story in stories_output.md (in order):
-    1. Identify which involved_repos this story touches
-    2. For each touched repo:
-        a. cd workspace/<repo>
-        b. Compose AI prompt: story acceptance criteria, dev notes,
-           feature-intent.json scoped to this repo, relevant
-           architecture.md sections, current contents of every path in
-           story.affected_modules, list of new_files_needed
-        c. Apply the implementation (Edit / Write tools)
-        d. Run the project's test command (from CLAUDE.md or auto-detected)
-        e. If tests fail and the failure is fixable inline: fix and re-run
-           (max 2 inline fix attempts per story per repo)
-        f. Capture diff vs HEAD: every modified path MUST be in
-           (story.affected_modules ∪ story.new_files_needed). Record any
-           paths outside this set in scope_deviations[].
-        g. git add -A
-        h. git commit -m "[Story <N.M>] <story title>"
-        i. Do NOT push yet — push happens once at end of run
-    3. If this story maps to a GitHub user-story issue: add label
-       `oracle:story-done` to that issue.
-    4. Append `### Story <N.M>` to PIPELINE.md with: repos touched, files
-       modified, test outcome, scope_deviations
-    5. If any repo's tests still fail after inline retries, OR if a hard
-       error occurred: STOP. Go to Phase 1.5 (failure handling).
+```bash
+for REPO in "${INVOLVED_REPOS[@]}"; do
+  cd "workspace/$REPO"
+  TEST_FILES=$(find . -type f \( -name "*.test.*" -o -name "*.spec.*" \
+    -o -name "*_test.*" -o -name "test_*" \) \
+    -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -1)
+  if [ -z "$TEST_FILES" ]; then
+    # Bootstrap per stack — see pipeline/SKILL.md Phase 3.5 for full logic
+    # (Jest for Node, pytest for Python, etc.). Add minimal config + smoke test.
+    git add -A && git commit -m "[Bootstrap] add test scaffold for project run"
+  fi
+  cd /tmp/oracle-work
+done
 ```
 
-**Per-story Iron Law:** every commit's diff must be a strict subset of the
-union of that story's `affected_modules` and `new_files_needed`.
-Out-of-scope edits accumulate into the project-level `scope_deviations` list
-— they do NOT cause the story to fail, but they DO cause the resulting PRs
-to carry the `scope-deviation` label and skip auto-deploy.
+Append `## Test Bootstrap` to PIPELINE.md noting which repos were
+bootstrapped. The bootstrap commit is part of the cumulative diff but is
+exempt from the per-story scope guardrail (it's foundational, not story
+work).
+
+---
+
+## Phase 1 — Story Iteration with full gstack loop
+
+This is the project-level analog of `pipeline/` Phases 1–7. For each story
+in BMAD dependency order (from `stories-output.md`), execute the full
+gstack pipeline scoped to **that one story** across the repos it touches.
+Each story is its own mini-pipeline run inside the project run.
+
+The gstack methodology is authoritative — `pipeline/` reads each
+`~/.claude/skills/gstack/<phase>/SKILL.md` head-100 at runtime. **Do the
+same here, per story.** Don't paraphrase the gstack instructions — read
+and follow them.
+
+### Per-story loop
+
+```
+for story in stories_output.md (in BMAD order):
+    cd /tmp/oracle-work
+    SCOPE = story.affected_modules ∪ story.new_files_needed
+    REPOS = repos touched by SCOPE  (a subset of involved_repos)
+    Append `### Story <N.M> — <title>` to PIPELINE.md with `## Status: IN_PROGRESS`
+
+    1.1  Investigate (gstack/investigate)
+         head -100 ~/.claude/skills/gstack/investigate/SKILL.md
+         For each repo in REPOS: cd workspace/<repo>, follow gstack
+         investigate methodology BUT scoped to story.affected_modules —
+         do NOT explore beyond SCOPE. Record root cause / approach in
+         PIPELINE.md `## Investigation` for this story.
+
+    1.2  Think (gstack/office-hours)
+         head -100 ~/.claude/skills/gstack/office-hours/SKILL.md
+         Apply the six forcing questions to the story's acceptance
+         criteria. Append `## Think` to the story's PIPELINE.md section.
+
+    1.3  Plan (gstack/plan-eng-review)
+         head -100 ~/.claude/skills/gstack/plan-eng-review/SKILL.md
+         Lock the per-repo edit plan. Verify every planned file is in
+         SCOPE — if a planned file is outside SCOPE, either drop it or
+         flag it as a scope deviation now (don't discover it post-build).
+         Append `## Plan` to the story section.
+
+    1.4  Build
+         For each repo in REPOS:
+           cd workspace/<repo>
+           Apply the plan via Edit / Write
+           Run the project's test command (from CLAUDE.md)
+           If tests fail and fixable inline: fix and re-run
+             (max 2 inline fix attempts per story per repo)
+         Capture diff vs HEAD: every modified path MUST be in SCOPE.
+         Out-of-scope paths → append to project scope_deviations[] (do
+         NOT block the story).
+
+    1.5  Review (gstack/review)
+         head -100 ~/.claude/skills/gstack/review/SKILL.md
+         Run the gstack review loop on the per-story diff (NOT the
+         cumulative diff — that's Phase 2). Max 3 fix iterations per
+         story. If review fails after 3 iterations: hard story failure
+         (Phase 1.5 below).
+
+    1.6  Security (gstack/cso) — conditional
+         If story.affected_modules touches any HIPAA path (Profile,
+         Client, Evaluation, Survey, Auth, Storage):
+           head -100 ~/.claude/skills/gstack/cso/SKILL.md
+           Run OWASP Top 10 + STRIDE audit on the per-story diff.
+           Apply the confidence gate (8/10+) and false-positive
+           exclusions per the gstack skill.
+           If a critical vuln is found: fix, re-audit. If unfixable
+           after 2 iterations: hard story failure.
+         Otherwise: skip with a note in PIPELINE.md.
+
+    1.7  QA (gstack/qa)
+         head -100 ~/.claude/skills/gstack/qa/SKILL.md
+         Run automated tests for each touched repo. Visual/browser tests
+         only if the story explicitly requires UI verification (UX-DR
+         acceptance criteria). If a bug is found: fix, generate
+         regression test, re-verify.
+
+    1.8  Atomic commit (per repo)
+         For each repo in REPOS:
+           cd workspace/<repo>
+           git add -A
+           git commit -m "[Story <N.M>] <story title>"
+         Do NOT push yet — push happens once at end of run.
+
+    1.9  Bookkeeping
+         If this story maps to a GitHub user-story issue:
+           gh issue edit <num> --add-label oracle:story-done
+         Update PIPELINE.md story section `## Status: COMPLETE`.
+
+    On hard failure at any step (1.1–1.7): go to Phase 1.5 below.
+```
+
+**Per-story Iron Law:** every commit's diff must be a strict subset of
+SCOPE. Out-of-scope edits accumulate into the project-level
+`scope_deviations` list — they do NOT cause the story to fail, but they DO
+cause the resulting PRs to carry the `scope-deviation` label and skip
+auto-deploy.
+
+**Why per-story (not per-project) gstack phases:** stories are the BMAD unit
+of correctness. Investigating cumulatively means a late story can pollute
+the investigation of an earlier story. Reviewing cumulatively means a
+20-file diff in front of the reviewer prompt drowns out the per-story
+intent. Per-story gstack keeps each unit's investigation, review, and
+security audit focused on its own diff and its own acceptance criteria.
+
+**Context budget per story:** if you find yourself reading the same gstack
+SKILL.md head-100 multiple times in one project run, stop. Read each one
+ONCE per project run, keep it in context for all stories.
 
 ### Phase 1.5 — Failure Handling
 
