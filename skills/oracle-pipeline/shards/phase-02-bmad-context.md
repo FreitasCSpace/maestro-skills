@@ -14,7 +14,7 @@ cd "$CTX_DIR" 2>/dev/null || {
   exit 1
 }
 
-REQUIRED=(feature-intent.json architecture.md prd.md front-end-spec.md stories-output.md)
+REQUIRED=(feature-intent.json stories-output.md)
 MISSING=()
 for f in "${REQUIRED[@]}"; do [ -f "$f" ] || MISSING+=("$f"); done
 
@@ -30,12 +30,15 @@ fi
 cd /tmp/oracle-work
 ```
 
-**Read all five BMAD files ONCE into context.** Extract:
-- `involved_repos[].full_name` from `feature-intent.json`
-- Dependency-ordered story list from `stories-output.md`
-  (Epic 1: 1.1, 1.2, …; Epic 2: 2.1, 2.2, …)
-- Per-story `affected_modules`, `new_files_needed`, `dev_notes`,
-  `acceptance_criteria`
+**Read only two files:**
+- `feature-intent.json` — extract `involved_repos[].full_name`
+- `stories-output.md` — extract the dependency-ordered story list
+  (Epic 1: 1.1, 1.2, …; Epic 2: 2.1, 2.2, …) and per-story
+  `affected_modules`, `new_files_needed`, `dev_notes`, `acceptance_criteria`
+
+Do NOT read architecture.md, prd.md, or front-end-spec.md upfront — they are
+large and rarely needed in full. If a specific story's implementation requires
+one of them, read only the relevant section at that point.
 
 Match GitHub user-story issues from 0.3 to BMAD stories by title or by
 `story:N.M` label. If neither matches: log a warning to PIPELINE.md and use
