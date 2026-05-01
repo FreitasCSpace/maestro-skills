@@ -1,68 +1,47 @@
 ---
 name: oracle-pipeline
 description: |
-  Autonomous project-level dev pipeline — implements an entire Oracle backlog
-  project (all epics + all user stories) in one session.
-  Triggered by user-story issues in `the-oracle-backlog` that share a
-  `project:<name>` label and carry `maestro-ready`. Consumes the project's
-  BMAD context, iterates every story in dependency order, opens one cumulative
-  PR per affected repo, and fires a `repository_dispatch` event to deploy the
-  ephemeral review env.
+  Autonomous BMAD implementation pipeline. Reads epics and stories from an
+  existing BMAD context in the-oracle-backlog, implements each story using
+  bmad-create-story → bmad-dev-story → bmad-code-review subprocesses, commits
+  per story, and opens one cumulative PR per affected repo. One anchor GitHub
+  issue tracks the whole project — no per-story issues needed.
 ---
 
-# Oracle Pipeline (project-level)
+# Oracle Pipeline (BMAD-based)
 
-Autonomous project-level dev pipeline. Unit of work: every epic and user story
-sharing a `project:<name>` label, executed in BMAD dependency order, no
-per-story human gate. Trigger surface: open user-story issues with
-`project:<X>` + `maestro-ready` labels. Anchor issue = lowest-numbered open
-story in the group. All orchestration comments go on the anchor issue.
+Implements an entire Oracle backlog project using BMAD's own dev workflows.
+Trigger surface: ONE anchor issue per project carrying `project:<name>` +
+`maestro-ready`. All progress is tracked via comments on that single issue.
 
-`CARESPACE_CONTEXT.md` is ~47KB — **never read the full file.** The scoped
-read (involved repos only) happens in phase-02-bmad-context.md after
-`involved_repos` is known.
-
-**CRITICAL: Your very first action is reading `shards/phase-00-input-gate.md`.
-Do NOT read any other file first. Do NOT look at PIPELINE.md. Every run is a
-brand new project.**
+**CRITICAL: First action is reading `shards/phase-00-input.md`. Nothing else.**
 
 ---
 
 ## Shard Reading Map
 
-Read each shard at the moment you enter that phase. Never pre-load.
+| When to read                      | Shard                        |
+|-----------------------------------|------------------------------|
+| **FIRST** (before anything else)  | shards/phase-00-input.md     |
+| After anchor issue resolved       | shards/phase-01-workspace.md |
+| After stories-index built         | shards/phase-02-repos.md     |
+| Before first story                | shards/phase-03-story-loop.md|
+| After last story committed        | shards/phase-04-pr-group.md  |
+| After PRs opened                  | shards/phase-05-output.md    |
 
-| When to read                     | Shard                          |
-|----------------------------------|--------------------------------|
-| **FIRST** (before anything else) | shards/phase-00-input-gate.md  |
-| After 0.1 succeeds               | shards/phase-01-workspace.md   |
-| After anchor resolved (0.4)      | shards/phase-02-bmad-context.md|
-| After 0.5b (involved_repos known)| shards/phase-03-repos.md       |
-| After 0.10 (PIPELINE.md written) | shards/phase-04-bootstrap.md   |
-| Before first story               | shards/phase-05-story-loop.md  |
-| On any hard failure              | shards/phase-06-failure.md     |
-| After last story completes       | shards/phase-07-scope-audit.md |
-| After scope audit                | shards/phase-08-pr-group.md    |
-| After all PRs opened             | shards/phase-09-deploy.md      |
-| After deploy dispatch            | shards/phase-10-output.md      |
-
-All shards are in `~/.claude/skills/oracle-pipeline/shards/`.
+All shards at `~/.claude/skills/oracle-pipeline/shards/`.
 
 ---
 
-## Anti-Waste Rules (active for the entire run)
+## Anti-Waste Rules
 
-1. **Never re-read a file you already read.** Once in context: done.
-   Applies to context-scoped.md, BMAD files, PIPELINE.md, source files.
-2. **Never re-read PIPELINE.md unless you wrote to it.** You wrote it; you know it.
-3. **Never re-explore the codebase between stories.** Use `affected_modules`
-   and `new_files_needed` from the story — don't re-grep.
-4. **Use BMAD context, not blind exploration.** If feature-intent.json or the
-   story already told you about a file, go directly.
-5. **One search per question.** Pick the best grep. One alternative — move on.
-6. **Auto-discovery is exactly ONE `gh issue list` call.** Do not wander.
+1. Never re-read a file already in context.
+2. `stories-index.md` is read ONCE — never re-read it mid-loop.
+3. Never re-read PIPELINE.md unless you just wrote to it.
+4. `claude --print` output is captured in a variable — don't re-run to see it.
+5. One search per question — pick the best grep, move on.
 
-## Iteration Guard (global)
+## Iteration Guard
 
-- Single story: max 3 inline fix attempts → hard failure (Phase 1.5).
-- Whole project: max 5 hard story failures → abort `PIPELINE_RUNAWAY`.
+- Per story: if `bmad-dev-story` halts twice → post failure on anchor issue, label `oracle:blocked-pipeline-failed`, exit.
+- Whole project: >5 story failures → `PIPELINE_RUNAWAY`, exit.
