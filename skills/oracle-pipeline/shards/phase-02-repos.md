@@ -95,7 +95,41 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
 done
 ```
 
-## Step 2.4 — Write PIPELINE.md
+## Step 2.4 — Index repos for large-codebase navigation
+
+For each repo, write a per-repo MCP config and run the code-graph index so that
+`bmad-dev-story` subprocesses can use Serena (LSP symbol lookup) and code-graph
+(semantic search) instead of reading whole files.
+
+```bash
+for REPO in "${INVOLVED_REPOS[@]}"; do
+  REPO_ROOT="/tmp/oracle-work/workspace/$REPO"
+
+  # Write per-repo MCP config consumed by claude --print subprocesses
+  cat > "$REPO_ROOT/.mcp.json" <<MCPEOF
+{
+  "mcpServers": {
+    "serena": {
+      "command": "serena",
+      "args": ["start-mcp-server", "--context", "claude-code", "--project", "$REPO_ROOT"]
+    },
+    "code-graph": {
+      "command": "npx",
+      "args": ["-y", "@sdsrs/code-graph"],
+      "cwd": "$REPO_ROOT"
+    }
+  }
+}
+MCPEOF
+
+  # Build code-graph index (incremental — safe to re-run)
+  cd "$REPO_ROOT"
+  code-graph-mcp incremental-index 2>&1 | tail -3 || echo "code-graph index skipped for $REPO"
+  cd /tmp/oracle-work
+done
+```
+
+## Step 2.5 — Write PIPELINE.md
 
 ```bash
 cat > /tmp/oracle-work/PIPELINE.md <<EOF

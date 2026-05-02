@@ -47,15 +47,27 @@ PRIMARY_REPO=$(echo "$STORY_AFFECTED_MODULES" | grep -oE 'carespace-[a-z]+' | he
 PRIMARY_REPO="${PRIMARY_REPO:-${INVOLVED_REPOS[0]}}"
 REPO_ROOT="/tmp/oracle-work/workspace/$PRIMARY_REPO"
 
+MCP_CONFIG="$REPO_ROOT/.mcp.json"
+MCP_FLAG=""
+[ -f "$MCP_CONFIG" ] && MCP_FLAG="--mcp-config $MCP_CONFIG"
+
 DEV_OUT=$(claude --print \
-  --allowedTools "Read,Write,Edit,Bash,Glob,Grep" \
+  --allowedTools "Read,Write,Edit,Bash,Glob,Grep,mcp__serena__*,mcp__code-graph__*" \
   --model claude-sonnet-4-6 \
   --max-turns 50 \
+  $MCP_FLAG \
   "PROJECT_ROOT: $REPO_ROOT
 PLANNING_DIR: $PLANNING_DIR
 implementation_artifacts: $STORIES_DIR
 project-root: $REPO_ROOT
 ALL_REPO_ROOTS: $(for r in "${INVOLVED_REPOS[@]}"; do echo "/tmp/oracle-work/workspace/$r"; done | tr '\n' ' ')
+
+## Codebase Navigation (use these BEFORE reaching for Read)
+- mcp__serena__find_symbol — look up any function/class/variable by name
+- mcp__serena__get_file_outline — get all symbols in a file without reading it
+- mcp__serena__find_references — find all call sites of a symbol
+- mcp__code-graph__semantic_search — find relevant code by description
+- Only use Read with offset+limit (50-100 lines) when you need the exact implementation body
 
 $(cat "$WF_DEV_STORY")
 
