@@ -1,6 +1,13 @@
 # Phase 02 — Clone Repos, Install BMAD, Branch, PIPELINE.md
 
-## Step 2.0 — Concurrency check
+## Step 2.0 — Tool preflight
+
+```bash
+command -v serena        >/dev/null 2>&1 || { echo "BLOCKED: serena not found — rebuild Docker image"; exit 1; }
+command -v code-graph-mcp >/dev/null 2>&1 || { echo "BLOCKED: code-graph-mcp not found — rebuild Docker image"; exit 1; }
+```
+
+## Step 2.0b — Concurrency check
 
 ```bash
 ACTIVE=$(gh issue list \
@@ -122,9 +129,9 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
 }
 MCPEOF
 
-  # Build code-graph index (incremental — safe to re-run)
+  # Build code-graph index (incremental — safe to re-run, required for dev subprocesses)
   cd "$REPO_ROOT"
-  code-graph-mcp incremental-index 2>&1 | tail -3 || echo "code-graph index skipped for $REPO"
+  code-graph-mcp incremental-index 2>&1 | tail -3 || { echo "BLOCKED: code-graph index failed for $REPO"; exit 1; }
   cd /tmp/oracle-work
 done
 ```

@@ -48,8 +48,7 @@ PRIMARY_REPO="${PRIMARY_REPO:-${INVOLVED_REPOS[0]}}"
 REPO_ROOT="/tmp/oracle-work/workspace/$PRIMARY_REPO"
 
 MCP_CONFIG="$REPO_ROOT/.mcp.json"
-MCP_FLAG=""
-[ -f "$MCP_CONFIG" ] && MCP_FLAG="--mcp-config $MCP_CONFIG"
+[ -f "$MCP_CONFIG" ] || { echo "BLOCKED: .mcp.json missing for $PRIMARY_REPO — phase-02 must have failed"; exit 1; }
 
 DEV_OUT=$(claude --print \
   --allowedTools "Read,Write,Edit,Bash,Glob,Grep,mcp__serena__*,mcp__code-graph__*" \
@@ -84,9 +83,10 @@ if [ "$DEV_STATUS" = "halted" ]; then
     --body "Story \`$STORY_KEY\` halted: $HALT_REASON — retrying once"
 
   DEV_OUT=$(claude --print \
-    --allowedTools "Read,Write,Edit,Bash,Glob,Grep" \
+    --allowedTools "Read,Write,Edit,Bash,Glob,Grep,mcp__serena__*,mcp__code-graph__*" \
     --model claude-sonnet-4-6 \
     --max-turns 50 \
+    --mcp-config "$MCP_CONFIG" \
     "PROJECT_ROOT: $REPO_ROOT
 $(cat "$WF_DEV_STORY")
 Story file: $STORY_FILE
