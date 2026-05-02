@@ -8,28 +8,36 @@ mkdir -p /tmp/oracle-work/workspace /tmp/oracle-work/stories
 cd /tmp/oracle-work
 ```
 
-## Step 1.1 — Clone backlog at the BMAD context branch
+## Step 1.1 — Clone backlog main, then fetch context files
 
-The BMAD context for each project lives on branch `bmad/<slug>-context`, not on main.
+Always clone main. If the bmad-context dir isn't on main, fetch it from the
+context branch. This handles both cases (context on main or on a separate branch).
 
 ```bash
-CONTEXT_BRANCH="bmad/${PROJECT_SLUG}-context"
+gh repo clone "$TARGET_ORG/the-oracle-backlog" backlog -- --depth=1
+cd backlog
 
-gh repo clone "$TARGET_ORG/the-oracle-backlog" backlog -- \
-  --depth=1 --branch "$CONTEXT_BRANCH" 2>/dev/null || {
-  gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
-    --body "BMAD context branch \`$CONTEXT_BRANCH\` not found — aborting"
-  gh issue edit "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
-    --remove-label oracle:implementing --add-label oracle:blocked-pipeline-failed
-  exit 1
-}
+CTX_DIR="bmad-context/$PROJECT_SLUG"
 
+# If context dir not on main, try to fetch it from the context branch
+if [ ! -d "$CTX_DIR" ]; then
+  CONTEXT_BRANCH="bmad/${PROJECT_SLUG}-context"
+  git fetch origin "$CONTEXT_BRANCH" 2>/dev/null && \
+    git checkout "origin/$CONTEXT_BRANCH" -- "$CTX_DIR" 2>/dev/null || {
+    cd /tmp/oracle-work
+    gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
+      --body "BMAD context not found on main or on branch \`$CONTEXT_BRANCH\` — aborting"
+    gh issue edit "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
+      --remove-label oracle:implementing --add-label oracle:blocked-pipeline-failed
+    exit 1
+  }
+  echo "Context fetched from $CONTEXT_BRANCH"
+else
+  echo "Context found on main"
+fi
+
+cd /tmp/oracle-work
 CTX_DIR="backlog/bmad-context/$PROJECT_SLUG"
-[ -d "$CTX_DIR" ] || {
-  gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
-    --body "Context dir \`bmad-context/$PROJECT_SLUG/\` not found on branch \`$CONTEXT_BRANCH\`"
-  exit 1
-}
 
 for f in feature-intent.json stories-output.md; do
   [ -f "$CTX_DIR/$f" ] || {
@@ -38,8 +46,6 @@ for f in feature-intent.json stories-output.md; do
     exit 1
   }
 done
-
-echo "BMAD context loaded from $CONTEXT_BRANCH"
 ```
 
 ## Step 1.2 — Extract involved repos (bash only, no Read tool)
@@ -68,7 +74,7 @@ echo "Stories index: $(wc -l < "$STORIES_IDX") lines (from $(wc -l < "$STORIES_R
 ```
 
 Read `stories-index.md` with the Read tool. If > 300 lines, read in chunks of 300
-using `offset` + `limit`. Extract from it:
+using `offset` + `limit`. Extract:
 - Ordered story list: Epic N → Story N.M titles
 - Per-story: `affected_modules`, `acceptance_criteria`
 
