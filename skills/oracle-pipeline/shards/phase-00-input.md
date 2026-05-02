@@ -8,64 +8,65 @@ TARGET_ORG="${TARGET_ORG:-carespace-ai}"
 gh auth status >/dev/null 2>&1 || { echo "BLOCKED: GITHUB_TOKEN invalid"; exit 1; }
 ```
 
-## Step 0.1 — Resolve project slug
+## Step 0.1 — Find the anchor issue
 
-**Mode A** — `$CLAUDEHUB_INPUT_KWARGS` contains `project_slug`. Use it directly.
+Issues in `the-oracle-backlog` carry `bmad` + `maestro-ready` + `project: <name>`.
+One issue per project — it already exists, never create a new one.
 
-**Mode B** — empty input. Discover via one gh call:
+**Mode A** — `$CLAUDEHUB_INPUT_KWARGS` contains `project_slug`. Find the anchor by slug:
+
+```bash
+# Find anchor issue matching the given slug
+ANCHOR_JSON=$(gh issue list \
+  --repo "$TARGET_ORG/the-oracle-backlog" \
+  --label bmad --label maestro-ready \
+  --state open --limit 100 \
+  --json number,title,labels)
+
+ANCHOR=$(echo "$ANCHOR_JSON" | jq -r --arg slug "$PROJECT_SLUG" '
+  .[] | select(
+    .labels[] | .name | ascii_downcase |
+    gsub("[^a-z0-9]"; "-") | ltrimstr("-") | rtrimstr("-") |
+    contains($slug)
+  ) | .number' | head -1)
+```
+
+**Mode B** — empty input. Pick the first eligible project:
 
 ```bash
 if [ -z "$PROJECT_SLUG" ]; then
-  ELIGIBLE=$(gh issue list \
+  ANCHOR_JSON=$(gh issue list \
     --repo "$TARGET_ORG/the-oracle-backlog" \
-    --label maestro-ready \
-    --state open --limit 1000 \
-    --json number,labels \
-    | jq -r '
-      [.[] | .labels[] | select(.name | startswith("project:"))]
-      | group_by(.name) | map({label: .[0].name, count: length})
-      | sort_by(-.count) | .[0]
-      | "\(.label)"
-    ')
-  [ -z "$ELIGIBLE" ] && { echo "BLOCKED: no eligible project found"; exit 1; }
+    --label bmad --label maestro-ready \
+    --state open --limit 1 \
+    --json number,title,labels)
 
-  PROJECT_NAME=$(echo "$ELIGIBLE" | sed 's/^project: //')
-  PROJECT_SLUG=$(echo "$PROJECT_NAME" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
-  echo "Auto-selected: $PROJECT_NAME → $PROJECT_SLUG"
+  ANCHOR=$(echo "$ANCHOR_JSON" | jq -r '.[0].number')
+  [ -z "$ANCHOR" ] || [ "$ANCHOR" = "null" ] && {
+    echo "BLOCKED: no open issues with bmad + maestro-ready"
+    exit 1
+  }
 fi
-
-PROJECT_LABEL="project: $PROJECT_NAME"
 ```
 
-## Step 0.2 — Find or create the anchor issue
-
-One issue per project. Find existing or create it.
+Both modes: resolve `PROJECT_NAME` and `PROJECT_SLUG` from the anchor issue's labels:
 
 ```bash
-ANCHOR=$(gh issue list \
+ANCHOR_LABELS=$(gh issue view "$ANCHOR" \
   --repo "$TARGET_ORG/the-oracle-backlog" \
-  --label "$(echo "$PROJECT_LABEL")" \
-  --label maestro-ready \
-  --state open --limit 1 \
-  --json number | jq -r '.[0].number // empty')
+  --json labels | jq -r '.labels[].name')
 
-if [ -z "$ANCHOR" ]; then
-  # No anchor exists yet — create one (body filled after stories-index is built in phase-01)
-  ANCHOR=$(gh issue create \
-    --repo "$TARGET_ORG/the-oracle-backlog" \
-    --title "[Oracle Project] $PROJECT_NAME" \
-    --body "Project pipeline pending — stories loading..." \
-    --label "$PROJECT_LABEL" --label maestro-ready \
-    | grep -oE '[0-9]+$')
-  echo "Created anchor issue #$ANCHOR"
-else
-  echo "Using existing anchor issue #$ANCHOR"
-fi
+PROJECT_LABEL=$(echo "$ANCHOR_LABELS" | grep "^project: " | head -1)
+PROJECT_NAME=$(echo "$PROJECT_LABEL" | sed 's/^project: //')
+PROJECT_SLUG=$(echo "$PROJECT_NAME" \
+  | tr '[:upper:]' '[:lower:]' \
+  | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+
+echo "Anchor: #$ANCHOR | Project: $PROJECT_NAME | Slug: $PROJECT_SLUG"
+[ -z "$PROJECT_SLUG" ] && { echo "BLOCKED: could not derive project slug from issue labels"; exit 1; }
 ```
 
-## Step 0.3 — Mark pipeline as started
+## Step 0.2 — Mark pipeline as started
 
 ```bash
 gh issue edit "$ANCHOR" \
@@ -75,7 +76,7 @@ gh issue edit "$ANCHOR" \
 
 gh issue comment "$ANCHOR" \
   --repo "$TARGET_ORG/the-oracle-backlog" \
-  --body "Oracle pipeline started for \`$PROJECT_LABEL\`. Implementation beginning now."
+  --body "Oracle pipeline started for \`$PROJECT_NAME\`. Implementation beginning now."
 ```
 
 ---

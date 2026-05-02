@@ -8,17 +8,26 @@ mkdir -p /tmp/oracle-work/workspace /tmp/oracle-work/stories
 cd /tmp/oracle-work
 ```
 
-## Step 1.1 — Clone backlog and validate
+## Step 1.1 — Clone backlog at the BMAD context branch
+
+The BMAD context for each project lives on branch `bmad/<slug>-context`, not on main.
 
 ```bash
-gh repo clone "$TARGET_ORG/the-oracle-backlog" backlog -- --depth=1
+CONTEXT_BRANCH="bmad/${PROJECT_SLUG}-context"
+
+gh repo clone "$TARGET_ORG/the-oracle-backlog" backlog -- \
+  --depth=1 --branch "$CONTEXT_BRANCH" 2>/dev/null || {
+  gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
+    --body "BMAD context branch \`$CONTEXT_BRANCH\` not found — aborting"
+  gh issue edit "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
+    --remove-label oracle:implementing --add-label oracle:blocked-pipeline-failed
+  exit 1
+}
 
 CTX_DIR="backlog/bmad-context/$PROJECT_SLUG"
 [ -d "$CTX_DIR" ] || {
   gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
-    --body "BMAD context not found at \`bmad-context/$PROJECT_SLUG/\` — aborting"
-  gh issue edit "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
-    --remove-label oracle:implementing --add-label oracle:blocked-pipeline-failed
+    --body "Context dir \`bmad-context/$PROJECT_SLUG/\` not found on branch \`$CONTEXT_BRANCH\`"
   exit 1
 }
 
@@ -29,6 +38,8 @@ for f in feature-intent.json stories-output.md; do
     exit 1
   }
 done
+
+echo "BMAD context loaded from $CONTEXT_BRANCH"
 ```
 
 ## Step 1.2 — Extract involved repos (bash only, no Read tool)
@@ -37,6 +48,7 @@ done
 INVOLVED_REPOS=($(jq -r '.involved_repos[].full_name | split("/")[1]' \
   "$CTX_DIR/feature-intent.json"))
 echo "Involved repos: ${INVOLVED_REPOS[*]}"
+[ ${#INVOLVED_REPOS[@]} -gt 0 ] || { echo "BLOCKED: no involved_repos in feature-intent.json"; exit 1; }
 ```
 
 ## Step 1.3 — Distill stories-output.md into a compact index
@@ -52,24 +64,13 @@ awk '
   /^- /              { print; next }
 ' "$STORIES_RAW" > "$STORIES_IDX"
 
-wc -l "$STORIES_IDX"
+echo "Stories index: $(wc -l < "$STORIES_IDX") lines (from $(wc -l < "$STORIES_RAW") raw)"
 ```
 
-Read `stories-index.md` with the Read tool (use offset+limit of 300 lines if > 300 lines).
-Extract:
+Read `stories-index.md` with the Read tool. If > 300 lines, read in chunks of 300
+using `offset` + `limit`. Extract from it:
 - Ordered story list: Epic N → Story N.M titles
 - Per-story: `affected_modules`, `acceptance_criteria`
-
-## Step 1.4 — Update anchor issue body with full story list
-
-```bash
-STORY_LIST=$(grep -E "^### Story|^## Epic" "$STORIES_IDX" | sed 's/^/- /')
-
-gh issue edit "$ANCHOR" \
-  --repo "$TARGET_ORG/the-oracle-backlog" \
-  --body "$(printf '# %s\n\nAll epics and stories for this project:\n\n%s' \
-    "$PROJECT_NAME" "$STORY_LIST")"
-```
 
 ---
 
