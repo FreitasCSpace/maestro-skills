@@ -5,7 +5,7 @@
 ```bash
 ACTIVE=$(gh issue list \
   --repo "$TARGET_ORG/the-oracle-backlog" \
-  --label oracle:implementing --state open --limit 100 \
+  --label maestro:implementing --state open --limit 100 \
   --json number | jq length)
 
 if [ "$ACTIVE" -gt 2 ]; then
@@ -36,10 +36,38 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
 done
 ```
 
-## Step 2.2 — Install BMAD into each repo
+## Step 2.2 — Clone BMAD workflow repo
 
-BMAD workflows run as `claude --print` subprocesses rooted at the repo dir.
-They need `_bmad/` present to locate config and persona files.
+Workflows live in `FreitasCSpace/carespace-bmad-workflow` under
+`bmad-template/bmm/workflows/4-implementation/`.
+
+```bash
+gh repo clone FreitasCSpace/carespace-bmad-workflow /tmp/oracle-work/bmad-workflows -- \
+  --depth=1 --filter=blob:none --sparse 2>/dev/null || \
+gh repo clone FreitasCSpace/carespace-bmad-workflow /tmp/oracle-work/bmad-workflows -- \
+  --depth=1
+
+# Sparse checkout only the implementation workflows
+cd /tmp/oracle-work/bmad-workflows
+git sparse-checkout set bmad-template/bmm/workflows/4-implementation 2>/dev/null || true
+cd /tmp/oracle-work
+
+BMAD_WF_BASE="/tmp/oracle-work/bmad-workflows/bmad-template/bmm/workflows/4-implementation"
+
+WF_CREATE_STORY="$BMAD_WF_BASE/bmad-create-story/workflow.md"
+WF_DEV_STORY="$BMAD_WF_BASE/bmad-dev-story/workflow.md"
+WF_CODE_REVIEW="$BMAD_WF_BASE/bmad-code-review/workflow.md"
+
+echo "create-story : $WF_CREATE_STORY"
+echo "dev-story    : $WF_DEV_STORY"
+echo "code-review  : $WF_CODE_REVIEW"
+
+[ -f "$WF_CREATE_STORY" ] || { echo "BLOCKED: bmad-create-story workflow not found"; exit 1; }
+[ -f "$WF_DEV_STORY" ]    || { echo "BLOCKED: bmad-dev-story workflow not found"; exit 1; }
+[ -f "$WF_CODE_REVIEW" ]  || { echo "BLOCKED: bmad-code-review workflow not found"; exit 1; }
+```
+
+## Step 2.3 — Install BMAD into each repo
 
 ```bash
 for REPO in "${INVOLVED_REPOS[@]}"; do
@@ -52,15 +80,12 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
       --ide claude-code \
       --modules bmm 2>&1 | tail -5
 
-    # Verify
     [ -f "_bmad/bmm/config.yaml" ] || {
-      echo "BMAD install failed in $REPO — trying interactive fallback"
-      # Non-interactive failed; install to a shared location instead
+      echo "BMAD install failed in $REPO — continuing without"
       cd /tmp/oracle-work
       continue
     }
 
-    # Don't commit the BMAD install — add to .gitignore
     grep -q "^_bmad/" .gitignore 2>/dev/null || echo "_bmad/" >> .gitignore
   else
     echo "BMAD already installed in $REPO"
@@ -68,35 +93,6 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
 
   cd /tmp/oracle-work
 done
-```
-
-## Step 2.3 — Locate BMAD workflow files
-
-Search in installed locations and the BMAD source clone:
-
-```bash
-find_workflow() {
-  local name="$1"
-  # Check each repo's install, then global skills, then source clone
-  for REPO in "${INVOLVED_REPOS[@]}"; do
-    local p="workspace/$REPO/.claude/skills/${name}/workflow.md"
-    [ -f "$p" ] && { echo "/tmp/oracle-work/$p"; return; }
-  done
-  find "$HOME/.claude/skills" "$HOME/bmad-method-src/src" \
-    -path "*/${name}/workflow.md" 2>/dev/null | head -1
-}
-
-WF_CREATE_STORY=$(find_workflow "bmad-create-story")
-WF_DEV_STORY=$(find_workflow "bmad-dev-story")
-WF_CODE_REVIEW=$(find_workflow "bmad-code-review")
-
-echo "create-story : $WF_CREATE_STORY"
-echo "dev-story    : $WF_DEV_STORY"
-echo "code-review  : $WF_CODE_REVIEW"
-
-[ -f "$WF_CREATE_STORY" ] || { echo "BLOCKED: bmad-create-story not found"; exit 1; }
-[ -f "$WF_DEV_STORY" ]    || { echo "BLOCKED: bmad-dev-story not found"; exit 1; }
-[ -f "$WF_CODE_REVIEW" ]  || { echo "BLOCKED: bmad-code-review not found"; exit 1; }
 ```
 
 ## Step 2.4 — Write PIPELINE.md
@@ -108,7 +104,6 @@ cat > /tmp/oracle-work/PIPELINE.md <<EOF
 ## Project
 slug: $PROJECT_SLUG
 anchor-issue: $TARGET_ORG/the-oracle-backlog#$ANCHOR
-context-branch: bmad/${PROJECT_SLUG}-context
 involved repos: ${INVOLVED_REPOS[*]}
 
 ## Status

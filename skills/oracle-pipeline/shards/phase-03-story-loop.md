@@ -42,11 +42,7 @@ echo "$CREATE_OUT" | tail -3
 
 ### Step B — Implement story
 
-Run dev-story scoped to the repos this story touches.
-`PROJECT_ROOT` is the primary repo for this story (first in `affected_modules`).
-
 ```bash
-# Determine primary repo from STORY_AFFECTED_MODULES
 PRIMARY_REPO=$(echo "$STORY_AFFECTED_MODULES" | grep -oE 'carespace-[a-z]+' | head -1)
 PRIMARY_REPO="${PRIMARY_REPO:-${INVOLVED_REPOS[0]}}"
 REPO_ROOT="/tmp/oracle-work/workspace/$PRIMARY_REPO"
@@ -96,7 +92,7 @@ if [ "$DEV_STATUS" = "halted" ]; then
     gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
       --body "PIPELINE_RUNAWAY: 5 hard failures — aborting pipeline"
     gh issue edit "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
-      --remove-label oracle:implementing --add-label oracle:blocked-pipeline-failed
+      --remove-label maestro:implementing --add-label maestro:blocked
     exit 2
   }
   continue

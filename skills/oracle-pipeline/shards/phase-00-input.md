@@ -16,7 +16,6 @@ One issue per project — it already exists, never create a new one.
 **Mode A** — `$CLAUDEHUB_INPUT_KWARGS` contains `project_slug`. Find the anchor by slug:
 
 ```bash
-# Find anchor issue matching the given slug
 ANCHOR_JSON=$(gh issue list \
   --repo "$TARGET_ORG/the-oracle-backlog" \
   --label bmad --label maestro-ready \
@@ -71,7 +70,7 @@ echo "Anchor: #$ANCHOR | Project: $PROJECT_NAME | Slug: $PROJECT_SLUG"
 ```bash
 gh issue edit "$ANCHOR" \
   --repo "$TARGET_ORG/the-oracle-backlog" \
-  --add-label oracle:implementing \
+  --add-label maestro:implementing \
   --remove-label maestro-ready
 
 gh issue comment "$ANCHOR" \

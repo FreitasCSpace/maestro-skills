@@ -7,7 +7,6 @@ declare -A PR_URLS
 for REPO in "${INVOLVED_REPOS[@]}"; do
   cd "workspace/$REPO"
 
-  # Only push if we have commits beyond main
   if ! git diff --quiet origin/main..HEAD 2>/dev/null; then
     git push --force-with-lease -u origin "$BRANCH"
 
@@ -54,8 +53,8 @@ gh issue comment "$ANCHOR" \
 
 gh issue edit "$ANCHOR" \
   --repo "$TARGET_ORG/the-oracle-backlog" \
-  --remove-label oracle:implementing \
-  --add-label oracle:deploying
+  --remove-label maestro:implementing \
+  --add-label maestro:deploying
 ```
 
 ## Trigger ephemeral deploy
