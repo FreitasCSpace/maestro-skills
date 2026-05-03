@@ -35,6 +35,11 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
   git remote set-url origin \
     "https://x-access-token:${GITHUB_TOKEN}@github.com/${TARGET_ORG}/${REPO}.git"
 
+  # Detect the default branch (master or main)
+  DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}')
+  DEFAULT_BRANCH="${DEFAULT_BRANCH:-master}"
+  echo "Default branch for $REPO: $DEFAULT_BRANCH"
+
   # Fetch the feature branch if it exists remotely
   git fetch origin "$BRANCH" 2>/dev/null || true
 
@@ -44,7 +49,7 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
     echo "Branch $BRANCH exists in $REPO — resuming from existing commits"
 
     # Collect story keys already committed on this branch
-    DONE_IN_REPO=$(git log "origin/main..$BRANCH" --format="%s" 2>/dev/null \
+    DONE_IN_REPO=$(git log "origin/${DEFAULT_BRANCH}..$BRANCH" --format="%s" 2>/dev/null \
       | grep -oE '\[Story [A-Za-z0-9._-]+\]' \
       | sed 's/\[Story //;s/\]//' )
     for sk in $DONE_IN_REPO; do
@@ -52,8 +57,8 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
       [[ " ${COMPLETED_STORIES[*]} " =~ " $sk " ]] || COMPLETED_STORIES+=("$sk")
     done
   else
-    # Fresh start: create branch from main
-    git checkout -B "$BRANCH" origin/main
+    # Fresh start: create branch from default branch
+    git checkout -B "$BRANCH" "origin/${DEFAULT_BRANCH}"
     echo "Created new branch $BRANCH in $REPO"
   fi
   cd /tmp/oracle-work
@@ -106,7 +111,7 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
   if [ ! -f "_bmad/bmm/config.yaml" ]; then
     echo "Installing BMAD in $REPO..."
     npx bmad-method install \
-      --non-interactive \
+      --yes \
       --ide claude-code \
       --modules bmm 2>&1 | tail -5
 
