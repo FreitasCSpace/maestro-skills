@@ -9,13 +9,15 @@ STORIES_DIR=/tmp/oracle-work/stories
 PLANNING_DIR=/tmp/oracle-work/backlog/bmad-context/$PROJECT_SLUG
 HARD_FAILURES=0
 RESUME_ANNOUNCED=false
+LAST_EPIC=0
+EPIC_STORY_COUNT=0
 ```
 
 ## Resume discovery
 
 Before iterating stories, identify where the previous run stopped.
-This is done by reading the stories-index.md ordered list (already in context
-from phase-01) and finding the first story NOT present in `COMPLETED_STORIES`.
+This is done by scanning `stories-order.txt` (written by phase-01) and finding
+the first story key NOT present in `COMPLETED_STORIES`.
 
 ```bash
 if [ ${#COMPLETED_STORIES[@]} -gt 0 ]; then
@@ -27,19 +29,36 @@ if [ ${#COMPLETED_STORIES[@]} -gt 0 ]; then
 fi
 ```
 
-Iterate the ordered story list from stories-index.md. For each story, compute
-`STORY_KEY` first, then check if it was already done. When the first
-un-skipped story is reached, announce the resume point and proceed normally.
+Iterate `/tmp/oracle-work/stories-order.txt` via bash `while read`. Each line is
+tab-separated `EPIC_NUM`, `STORY_NUM`, `STORY_TITLE`. `STORY_KEY` is computed by
+bash (same formula as commit subjects). Per-story metadata is sourced from
+`story-meta/N-M.sh` written by phase-01's extract-stories.py.
 
-For each story (iterate the ordered list extracted from stories-index.md):
+```bash
+while IFS=$'\t' read -r EPIC_NUM STORY_NUM STORY_TITLE; do
+  [ -z "$STORY_NUM" ] && continue
+
+  STORY_KEY="${EPIC_NUM}-${STORY_NUM}-$(echo "$STORY_TITLE" \
+    | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | cut -c1-50)"
+
+  STORY_AFFECTED_MODULES="" STORY_AC=""
+  STORY_META="/tmp/oracle-work/story-meta/${EPIC_NUM}-${STORY_NUM}.sh"
+  [ -f "$STORY_META" ] && source "$STORY_META"
+
+  # Epic transition gate — post completion comment when epic number changes
+  if [ "$EPIC_NUM" != "$LAST_EPIC" ] && [ "$LAST_EPIC" -gt 0 ]; then
+    gh issue comment "$ANCHOR" \
+      --repo "$TARGET_ORG/the-oracle-backlog" \
+      --body "✅ Epic $LAST_EPIC complete — $EPIC_STORY_COUNT stories implemented."
+    EPIC_STORY_COUNT=0
+  fi
+  LAST_EPIC="$EPIC_NUM"
+```
 
 ### Step A — Skip if already committed
 
 ```bash
-STORY_KEY="${EPIC_NUM}-${STORY_NUM}-$(echo "$STORY_TITLE" \
-  | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | cut -c1-50)"
-
-if [[ " ${COMPLETED_STORIES[*]} " =~ " ${STORY_KEY} " ]]; then
+  if [[ " ${COMPLETED_STORIES[*]} " =~ " ${STORY_KEY} " ]]; then
   echo "### Story $STORY_KEY — SKIPPED (already committed in prior run)"
   echo "### Story $STORY_KEY — COMPLETE" >> /tmp/oracle-work/PIPELINE.md
   continue
@@ -60,8 +79,6 @@ fi
 ### Step B — Create story file
 
 ```bash
-STORY_KEY="${EPIC_NUM}-${STORY_NUM}-$(echo "$STORY_TITLE" \
-  | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | cut -c1-50)"
 STORY_FILE="$STORIES_DIR/${STORY_KEY}.md"
 
 CREATE_OUT=$(claude --print \
@@ -199,16 +216,20 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
 done
 
 echo "### Story $STORY_KEY — COMPLETE" >> /tmp/oracle-work/PIPELINE.md
+EPIC_STORY_COUNT=$((EPIC_STORY_COUNT + 1))
+
+done < "/tmp/oracle-work/stories-order.txt"
 ```
 
-### Step E — Epic gate
+### Step E — Final epic gate
 
-After the last story in each epic:
+After the while loop exits, post the completion comment for the last epic:
 
 ```bash
-gh issue comment "$ANCHOR" \
-  --repo "$TARGET_ORG/the-oracle-backlog" \
-  --body "✅ Epic $EPIC_NUM complete — $EPIC_STORY_COUNT stories implemented."
+[ "$LAST_EPIC" -gt 0 ] && \
+  gh issue comment "$ANCHOR" \
+    --repo "$TARGET_ORG/the-oracle-backlog" \
+    --body "✅ Epic $LAST_EPIC complete — $EPIC_STORY_COUNT stories implemented."
 ```
 
 ---
