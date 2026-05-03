@@ -8,7 +8,28 @@ Commit after each story. Comment on anchor issue after each epic.
 STORIES_DIR=/tmp/oracle-work/stories
 PLANNING_DIR=/tmp/oracle-work/backlog/bmad-context/$PROJECT_SLUG
 HARD_FAILURES=0
+RESUME_ANNOUNCED=false
 ```
+
+## Resume discovery
+
+Before iterating stories, identify where the previous run stopped.
+This is done by reading the stories-index.md ordered list (already in context
+from phase-01) and finding the first story NOT present in `COMPLETED_STORIES`.
+
+```bash
+if [ ${#COMPLETED_STORIES[@]} -gt 0 ]; then
+  echo ""
+  echo "=== RESUME MODE: ${#COMPLETED_STORIES[@]} stories already committed ==="
+  echo "Completed: ${COMPLETED_STORIES[*]}"
+  echo "Will skip completed stories and resume from the first uncommitted one."
+  echo ""
+fi
+```
+
+Iterate the ordered story list from stories-index.md. For each story, compute
+`STORY_KEY` first, then check if it was already done. When the first
+un-skipped story is reached, announce the resume point and proceed normally.
 
 For each story (iterate the ordered list extracted from stories-index.md):
 
@@ -22,6 +43,17 @@ if [[ " ${COMPLETED_STORIES[*]} " =~ " ${STORY_KEY} " ]]; then
   echo "### Story $STORY_KEY — SKIPPED (already committed in prior run)"
   echo "### Story $STORY_KEY — COMPLETE" >> /tmp/oracle-work/PIPELINE.md
   continue
+fi
+
+# First un-skipped story — announce the resume point
+if [ "$RESUME_ANNOUNCED" = "false" ] && [ ${#COMPLETED_STORIES[@]} -gt 0 ]; then
+  RESUME_ANNOUNCED=true
+  echo ""
+  echo "=== RESUMING from Epic $EPIC_NUM, Story $EPIC_NUM.$STORY_NUM — $STORY_TITLE ==="
+  gh issue comment "$ANCHOR" \
+    --repo "$TARGET_ORG/the-oracle-backlog" \
+    --body "Pipeline resuming from **Epic $EPIC_NUM, Story $EPIC_NUM.$STORY_NUM** — \`$STORY_TITLE\` (${#COMPLETED_STORIES[@]} stories already committed from prior run)."
+  echo ""
 fi
 ```
 
