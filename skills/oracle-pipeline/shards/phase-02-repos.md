@@ -131,7 +131,7 @@ MCPEOF
 
   # Build code-graph index (incremental — safe to re-run, required for dev subprocesses)
   cd "$REPO_ROOT"
-  code-graph-mcp incremental-index 2>&1 | tail -3 || { echo "BLOCKED: code-graph index failed for $REPO"; exit 1; }
+  timeout 300 code-graph-mcp incremental-index 2>&1 | tail -3 || echo "WARN: code-graph index skipped for $REPO (slow/failed — MCP will index on first use)"
   cd /tmp/oracle-work
 done
 ```
