@@ -12,7 +12,20 @@ HARD_FAILURES=0
 
 For each story (iterate the ordered list extracted from stories-index.md):
 
-### Step A — Create story file
+### Step A — Skip if already committed
+
+```bash
+STORY_KEY="${EPIC_NUM}-${STORY_NUM}-$(echo "$STORY_TITLE" \
+  | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | cut -c1-50)"
+
+if [[ " ${COMPLETED_STORIES[*]} " =~ " ${STORY_KEY} " ]]; then
+  echo "### Story $STORY_KEY — SKIPPED (already committed in prior run)"
+  echo "### Story $STORY_KEY — COMPLETE" >> /tmp/oracle-work/PIPELINE.md
+  continue
+fi
+```
+
+### Step B — Create story file
 
 ```bash
 STORY_KEY="${EPIC_NUM}-${STORY_NUM}-$(echo "$STORY_TITLE" \

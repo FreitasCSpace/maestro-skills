@@ -24,6 +24,7 @@ fi
 
 ```bash
 BRANCH="feat/oracle-project-$PROJECT_SLUG"
+COMPLETED_STORIES=()
 
 for REPO in "${INVOLVED_REPOS[@]}"; do
   gh repo clone "$TARGET_ORG/$REPO" "workspace/$REPO" -- --depth=50
@@ -34,13 +35,35 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
   git remote set-url origin \
     "https://x-access-token:${GITHUB_TOKEN}@github.com/${TARGET_ORG}/${REPO}.git"
 
+  # Fetch the feature branch if it exists remotely
+  git fetch origin "$BRANCH" 2>/dev/null || true
+
   if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
-    git checkout -B "$BRANCH" origin/main
+    # Resume: check out the existing branch (keep prior commits)
+    git checkout -B "$BRANCH" "origin/$BRANCH"
+    echo "Branch $BRANCH exists in $REPO — resuming from existing commits"
+
+    # Collect story keys already committed on this branch
+    DONE_IN_REPO=$(git log "origin/main..$BRANCH" --format="%s" 2>/dev/null \
+      | grep -oE '\[Story [A-Za-z0-9._-]+\]' \
+      | sed 's/\[Story //;s/\]//' )
+    for sk in $DONE_IN_REPO; do
+      # Only add if not already in the array
+      [[ " ${COMPLETED_STORIES[*]} " =~ " $sk " ]] || COMPLETED_STORIES+=("$sk")
+    done
   else
+    # Fresh start: create branch from main
     git checkout -B "$BRANCH" origin/main
+    echo "Created new branch $BRANCH in $REPO"
   fi
   cd /tmp/oracle-work
 done
+
+if [ ${#COMPLETED_STORIES[@]} -gt 0 ]; then
+  echo "Stories already committed (will skip): ${COMPLETED_STORIES[*]}"
+else
+  echo "No prior commits on feature branch — starting from story 1"
+fi
 ```
 
 ## Step 2.2 — Clone BMAD workflow repo
