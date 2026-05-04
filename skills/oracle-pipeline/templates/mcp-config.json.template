@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "serena",
+      "args": ["start-mcp-server", "--context", "claude-code", "--project", "__REPO_ROOT__"]
+    },
+    "code-graph": {
+      "command": "npx",
+      "args": ["-y", "@sdsrs/code-graph"],
+      "cwd": "__REPO_ROOT__"
+    }
+  }
+}
