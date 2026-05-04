@@ -1,0 +1,12 @@
+feature: <feature-slug>
+backlog: /tmp/the-oracle-backlog
+created_at: <iso8601>
+updated_at: <iso8601>
+stories:
+  - id: "1.1"
+    title: <story title>
+    status: Ready          # Ready | InProgress | Review | Done | Blocked
+    branch: null
+    pr_urls: []
+    note: null
+    updated_at: null

@@ -18,3 +18,8 @@ skills:
     description: "Autonomous dev pipeline — full gstack sprint from issue to PR (investigate, build, review, security, QA, ship)"
     prompt: "/pipeline"
     max_turns: 200
+
+  - name: the-oracle-story-dev
+    description: "Autonomous BMAD story development — reads stories-output.md from the-oracle-backlog, manages sprint manifest, develops one story across all repos_affected, opens cross-repo PRs via multi-gitter"
+    prompt: "/the-oracle-story-dev"
+    max_turns: 200
