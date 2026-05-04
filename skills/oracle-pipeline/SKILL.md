@@ -87,7 +87,10 @@ with a note explaining why automation is impractical.
 | `COVERAGE_THRESHOLD` | optional, default 80 |
 
 Tools required on PATH: `gh`, `jq`, `git`, `python3`, `npx`, `claude`,
-`serena`, `code-graph-mcp`.
+`serena`, `code-graph-mcp`, `multi-gitter` (post-merge coordination).
+
+Install multi-gitter: `go install github.com/lindell/multi-gitter@latest`
+(or `brew install lindell/multi-gitter/multi-gitter`).
 
 ## Pipeline Flow
 
@@ -96,9 +99,33 @@ phase 00  → discover anchor issue, derive project slug, mark implementing
 phase 01  → clone backlog, fetch BMAD context, parse stories
 phase 02  → clone target repos, install BMAD, index code-graph, write PIPELINE.md
 phase 03  → for each story: create → dev → gates → review → commit  (LOOP)
-phase 04  → push branches, open PR group, dispatch deploy
+phase 04  → push branches, open PR group (gh CLI), dispatch deploy
 phase 05  → finalize PIPELINE.md, optional webhook, emit JSON
 ```
+
+## Post-Pipeline Coordination (multi-gitter)
+
+After the pipeline opens the PR group, lifecycle ops use
+[lindell/multi-gitter](https://github.com/lindell/multi-gitter) so one
+command operates on every PR in the group at once.
+
+| Operation | Script | Anchor label transition |
+|-----------|--------|------------------------|
+| Status across all PRs | [`scripts/pr-status.sh`](scripts/pr-status.sh) | (read-only) |
+| Squash-merge entire group | [`scripts/pr-merge-group.sh`](scripts/pr-merge-group.sh) | `maestro:deploying` → `maestro:merged` |
+| Close entire group (abort) | [`scripts/pr-close-group.sh`](scripts/pr-close-group.sh) | (caller responsibility) |
+| Full reset (PRs + branches + labels) | [`scripts/reset-issue.sh`](scripts/reset-issue.sh) | terminal-state → `maestro-ready` |
+
+Each script reads `BRANCH` + `INVOLVED_REPOS` + `TARGET_ORG` from the phase
+env files (or directly from your shell if you're operating on a project
+without a local workspace). They invoke `multi-gitter <op> --branch <BRANCH>
+--repo <comma-list>` so all selection happens by the canonical branch name
+(rule 1 guarantees one branch per project per repo).
+
+Why not phase 04 too? Phase 04 needs to render a per-project body from the
+test-plan rollup (rule 4) and open dual targets per repo (rule 3); doing
+that through multi-gitter's run-script model would be more code, not less.
+Multi-gitter shines after PRs exist — for status, merge, close.
 
 ## Story Lifecycle (BMAD Developer Loop)
 
@@ -247,6 +274,11 @@ wave algorithm details and merge protocol.
 | [scripts/lint-check.sh](scripts/lint-check.sh) | auto-detect linter (npm/eslint/ruff/flake8/go vet) |
 | [scripts/check-coverage.sh](scripts/check-coverage.sh) | auto-detect runner; enforce ≥ 80% |
 | [scripts/pre-commit-check.sh](scripts/pre-commit-check.sh) | final lint + coverage gate |
+| [scripts/ensure-labels.sh](scripts/ensure-labels.sh) | idempotently create maestro:* labels on the backlog repo |
+| [scripts/pr-status.sh](scripts/pr-status.sh) | multi-gitter status across the project's PR group |
+| [scripts/pr-merge-group.sh](scripts/pr-merge-group.sh) | multi-gitter merge entire group; flip anchor to `maestro:merged` |
+| [scripts/pr-close-group.sh](scripts/pr-close-group.sh) | multi-gitter close entire group (no branch deletion) |
+| [scripts/reset-issue.sh](scripts/reset-issue.sh) | full reset: close PRs + delete branches + reset anchor labels |
 
 ## Templates and Resources
 

@@ -39,16 +39,45 @@ spec-incomplete                 │
                        │      stale       │
                        ▼   (resume next)  ▼
                   maestro:deploying  maestro:blocked
+                       │
+                       ▼  (pr-merge-group.sh)
+                  maestro:merged
+                       ▲
+                       │  (any terminal state)
+                  reset-issue.sh ───→ maestro-ready
 ```
 
 Labels emitted by the pipeline:
 - `maestro:implementing` — phase 00 marks, phase 04 removes
 - `maestro:deploying` — phase 04 sets after PRs open
+- `maestro:merged` — `pr-merge-group.sh` (multi-gitter merge) sets after squash-merge
 - `maestro:blocked` — runaway (HARD_FAILURES ≥ 5)
 - `maestro:blocked-pipeline-failed` — BMAD context missing
-- `maestro:blocked-spec-incomplete` — **rule 2** — issue body fails
-  `validate-issue-spec.sh` (length / AC markers / structure)
+- `maestro:blocked-spec-incomplete` — **rule 2** — `validate-issue-spec.sh`
+  rejected the anchor (body shape A) AND the linked BMAD context (shape B)
 - `oracle-project`, `group:project-<slug>` — applied to PRs
+
+All maestro:* labels are auto-created on the backlog repo by
+[`scripts/ensure-labels.sh`](scripts/ensure-labels.sh), called from phase 00
+right after `gh auth status`. Without this, `gh issue edit --add-label X`
+fails atomically when X doesn't exist on the repo.
+
+## Multi-gitter Coordination
+
+Lifecycle ops on existing PR groups use
+[`lindell/multi-gitter`](https://github.com/lindell/multi-gitter):
+
+```bash
+multi-gitter <op> --branch "$BRANCH" --repo "<comma-list>" --token "$GITHUB_TOKEN"
+```
+
+Selection by branch name is reliable because rule 1 guarantees one branch
+per project per repo. The wrappers add anchor-label transitions and the
+`reset-issue.sh` flow combines close + branch delete + label reset.
+
+Phase 04 stays on `gh CLI` for PR creation because it needs to render the
+test-plan checklist (rule 4) and open dual targets per repo (rule 3); going
+through multi-gitter's run-script model would be more code, not less.
 
 ## Process Rules — Implementation Reference
 

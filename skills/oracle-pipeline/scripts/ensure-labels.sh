@@ -16,6 +16,7 @@ ensure_label() {
 ensure_label "maestro-ready"                   "0E8A16" "Oracle pipeline: ready to start"
 ensure_label "maestro:implementing"            "FBCA04" "Oracle pipeline: actively implementing"
 ensure_label "maestro:deploying"               "0E8A16" "Oracle pipeline: PRs opened, awaiting deployment"
+ensure_label "maestro:merged"                  "5319E7" "Oracle pipeline: PR group merged via pr-merge-group.sh"
 ensure_label "maestro:blocked"                 "B60205" "Oracle pipeline: aborted (PIPELINE_RUNAWAY ≥ 5 failures)"
 ensure_label "maestro:blocked-pipeline-failed" "B60205" "Oracle pipeline: BMAD context missing or workflow broken"
 ensure_label "maestro:blocked-spec-incomplete" "B60205" "Oracle pipeline: anchor issue body fails the spec gate"
