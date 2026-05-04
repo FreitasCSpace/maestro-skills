@@ -16,6 +16,10 @@ mkdir -p "$(dirname "$OUT_ENV")"
 TARGET_ORG="${TARGET_ORG:-carespace-ai}"
 gh auth status >/dev/null 2>&1 || { echo "BLOCKED: GITHUB_TOKEN invalid"; exit 1; }
 
+# Pre-create maestro:* labels so subsequent --add-label calls don't fail atomically
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/ensure-labels.sh" "$TARGET_ORG/the-oracle-backlog" || true
+
 PROJECT_SLUG=$(echo "${CLAUDEHUB_INPUT_KWARGS:-}" | jq -r '.project_slug // empty' 2>/dev/null || echo "")
 ANCHOR=""
 RESUME_MODE=false
@@ -84,13 +88,27 @@ if [ -z "$ANCHOR" ]; then
 fi
 
 # ── Mode B2: fresh start from maestro-ready ──────────────────────────────────
+# Defense-in-depth: skip issues that ALSO carry a terminal maestro state label
+# (deploying / blocked / blocked-*). Otherwise a re-applied maestro-ready on a
+# deployed issue would re-trigger the whole pipeline.
 if [ -z "$ANCHOR" ]; then
-  ANCHOR=$(gh issue list --repo "$TARGET_ORG/the-oracle-backlog" \
-    --label bmad --label maestro-ready --state open --limit 1 \
-    --json number | jq -r '.[0].number')
+  TERMINAL='^(maestro:deploying|maestro:blocked|maestro:blocked-pipeline-failed|maestro:blocked-spec-incomplete)$'
+  while IFS= read -r num; do
+    [ -z "$num" ] && continue
+    LABELS=$(gh issue view "$num" --repo "$TARGET_ORG/the-oracle-backlog" \
+      --json labels --jq '.labels[].name' 2>/dev/null || echo "")
+    if echo "$LABELS" | grep -qE "$TERMINAL"; then
+      echo "Skipping #$num — has terminal label (already deployed/blocked)"
+      continue
+    fi
+    ANCHOR="$num"; break
+  done < <(gh issue list --repo "$TARGET_ORG/the-oracle-backlog" \
+    --label bmad --label maestro-ready --state open --limit 20 \
+    --json number --jq '.[].number')
 
-  [ -z "$ANCHOR" ] || [ "$ANCHOR" = "null" ] && {
-    echo "BLOCKED: no maestro-ready issues and no resumable runs"; exit 0; }
+  [ -z "$ANCHOR" ] && {
+    echo "BLOCKED: no maestro-ready issues (without terminal labels) and no resumable runs"
+    exit 0; }
   echo "Mode B2: fresh start for issue #$ANCHOR"
 fi
 
