@@ -125,6 +125,63 @@ bash $SKILL/scripts/04-open-prs.sh
 bash $SKILL/scripts/05-finalize.sh
 ```
 
+## Parallel-Wave Run Mode
+
+When a project has 2+ stories with disjoint `affected_modules`, run them
+concurrently as worktree-isolated Task agents (Story Parallel Implementation
+pattern from [SUBAGENT-PATTERNS.md](../../SUBAGENT-PATTERNS.md)).
+
+### Step 1 — Plan waves
+```bash
+python3 $SKILL/scripts/plan-waves.py
+# writes /tmp/oracle-work/waves.txt
+# one line per wave, tab-separated records:  EPIC|STORY|TITLE|MODULES
+```
+
+`plan-waves.py` greedy-colors stories into waves where no two members share
+any module. Stories within a wave are safe to implement in parallel; waves
+themselves run sequentially.
+
+### Step 2 — Fan out one Task agent per story per wave
+For each line of `waves.txt`, spawn one background Task agent per record.
+Each agent gets its own provisioned workspace (`/tmp/oracle-work-<i>/`) so
+worktrees don't collide. Reuse the same env files via copy.
+
+```
+# Pseudocode — main context drives this:
+for wave in lines(/tmp/oracle-work/waves.txt):
+    for record in wave.split('\t'):     # EPIC|STORY|TITLE|MODULES
+        epic, story, title, _ = record.split('|', 3)
+        agent_id = i + 1
+        cp -r /tmp/oracle-work /tmp/oracle-work-{agent_id}
+        Task(
+          subagent_type="general-purpose",
+          run_in_background=True,
+          isolation="worktree",
+          prompt=f"""
+            ORACLE_WORK=/tmp/oracle-work-{agent_id} \\
+            bash {SKILL}/scripts/run-wave-story.sh "{epic}" "{story}" "{title}"
+
+            Story scope: only files in modules: {modules}
+            Return last line JSON: {{"story_key":"...","status":"ok|halted|gates","commit_sha":"..."}}
+          """
+        )
+    await all background agents in this wave
+    rebase-and-merge each agent's commits into the main feature branch
+```
+
+### Step 3 — Continue with phases 04 and 05 as usual
+Once every wave is drained and commits are present on the feature branch,
+run `04-open-prs.sh` and `05-finalize.sh` from main context.
+
+### When NOT to use parallel waves
+- Single-story project (overhead > savings)
+- All stories touch the same files (`plan-waves.py` will produce N waves of 1)
+- Resume mode after a partial failure — easier to debug sequentially
+
+See [REFERENCE.md#parallel-run-mode](REFERENCE.md#parallel-run-mode) for the
+wave algorithm details and merge protocol.
+
 ## Scripts
 
 | Script | Purpose |
@@ -135,6 +192,8 @@ bash $SKILL/scripts/05-finalize.sh
 | [scripts/03-run-story.sh](scripts/03-run-story.sh) | one full story lifecycle with gates |
 | [scripts/04-open-prs.sh](scripts/04-open-prs.sh) | push + PR group + deploy dispatch |
 | [scripts/05-finalize.sh](scripts/05-finalize.sh) | PIPELINE.md, output JSON, webhook |
+| [scripts/plan-waves.py](scripts/plan-waves.py) | group stories into parallel-safe waves |
+| [scripts/run-wave-story.sh](scripts/run-wave-story.sh) | single-story runner for parallel Task agents |
 | [scripts/lint-check.sh](scripts/lint-check.sh) | auto-detect linter (npm/eslint/ruff/flake8/go vet) |
 | [scripts/check-coverage.sh](scripts/check-coverage.sh) | auto-detect runner; enforce ≥ 80% |
 | [scripts/pre-commit-check.sh](scripts/pre-commit-check.sh) | final lint + coverage gate |

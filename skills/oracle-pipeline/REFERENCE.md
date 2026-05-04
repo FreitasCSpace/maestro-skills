@@ -202,6 +202,61 @@ The pipeline allows up to **2** concurrent runs. Phase 02 counts open
 `maestro:implementing` issues; if `> 2`, it exits 0 with the label intact so
 a future run picks it up.
 
+## Parallel Run Mode
+
+### Wave algorithm
+[`scripts/plan-waves.py`](scripts/plan-waves.py) implements greedy first-fit
+graph coloring:
+
+```
+For each story s in BMAD order:
+  modules(s) := tokenized lowercase set from STORY_AFFECTED_MODULES
+  For each existing wave w:
+    if forall t in w: modules(s) ∩ modules(t) == ∅:
+      append s to w
+      goto next story
+  open new wave [s]
+```
+
+The result is **deterministic** (stable across reruns) and **preserves epic
+ordering** within each wave. Output `waves.txt` has one line per wave;
+records within a line are tab-separated, fields are pipe-separated:
+
+```
+EPIC|STORY|TITLE|module1,module2  <TAB>  EPIC|STORY|TITLE|module3,module4 ...
+```
+
+### Workspace isolation
+Each parallel agent gets its own `/tmp/oracle-work-<i>/` provisioned by
+`cp -r /tmp/oracle-work` in main context **before** spawning. The agent runs
+[`scripts/run-wave-story.sh`](scripts/run-wave-story.sh) which symlinks
+`/tmp/oracle-work` → `ORACLE_WORK` so the rest of the pipeline scripts work
+unchanged.
+
+The `Task` tool's `isolation: "worktree"` adds a git-level worktree on top —
+agent commits land in its own branch, then main rebases-and-merges into the
+canonical feature branch once the wave drains.
+
+### Merge protocol (per wave)
+1. Await all agents in the wave (`TaskOutput` with `block: true` per agent).
+2. Validate each agent's last-line JSON for `status: ok`.
+3. For each successful agent, fetch its commit and cherry-pick onto the
+   canonical `feat/oracle-project-<slug>` branch.
+4. Conflicts → fail the wave, increment `HARD_FAILURES`, fall back to
+   sequential mode for the remaining stories.
+
+### Failure handling differences from sequential mode
+- A halted agent is treated as one `HARD_FAILURE` (no per-agent retry —
+  retries happen inside `03-run-story.sh` already).
+- Cherry-pick conflict in main context = automatic fall-back to sequential
+  mode for remaining waves; the wave that conflicted gets re-run sequentially.
+- The `HARD_FAILURES ≥ 5` runaway guard still applies.
+
+### When the wave plan degenerates
+If `plan-waves.py` produces N waves of 1 story each, parallel mode offers
+no speedup — main context should detect this (compare wave count to story
+count) and fall through to sequential mode.
+
 ## Adding a Phase
 
 1. Add a script `scripts/NN-<name>.sh` reading prior `env.0N.sh` files.
