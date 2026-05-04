@@ -24,7 +24,8 @@ if [ "$ACTIVE" -gt 2 ]; then
   echo "Concurrency cap reached ($ACTIVE active) — leaving label in place"; exit 0
 fi
 
-BRANCH="feat/oracle-project-$PROJECT_SLUG"
+# BRANCH set by phase 00 (rule 1: feat/<ISSUE>-<short-slug>)
+: "${BRANCH:?BRANCH must be set by phase 00}"
 COMPLETED_STORIES=()
 
 for REPO in "${INVOLVED_REPOS[@]}"; do

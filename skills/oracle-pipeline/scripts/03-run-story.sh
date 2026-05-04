@@ -116,6 +116,10 @@ if [ "$DEV_STATUS" = "halted" ]; then
   gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
     --body "Story \`$STORY_KEY\` failed after retry."
   echo "### Story $STORY_KEY — FAILED" >> /tmp/oracle-work/PIPELINE.md
+  mkdir -p /tmp/oracle-work/test-plan
+  jq -nc --arg k "$STORY_KEY" --arg t "$STORY_TITLE" \
+    '{story_key:$k, title:$t, status:"halted", lint:"unknown", coverage:"unknown", review:"unknown"}' \
+    >> /tmp/oracle-work/test-plan/stories.jsonl
   exit 1
 fi
 
@@ -140,6 +144,10 @@ if [ -n "$GATE_FAILS" ]; then
     gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
       --body "Story \`$STORY_KEY\` failed quality gates after retry: $GATE_FAILS"
     echo "### Story $STORY_KEY — FAILED (gates)" >> /tmp/oracle-work/PIPELINE.md
+    mkdir -p /tmp/oracle-work/test-plan
+    jq -nc --arg k "$STORY_KEY" --arg t "$STORY_TITLE" --arg f "$GATE_FAILS" \
+      '{story_key:$k, title:$t, status:"failed_gates", lint:(if ($f|test("lint")) then "fail" else "pass" end), coverage:(if ($f|test("coverage")) then "fail" else "pass" end), review:"unknown"}' \
+      >> /tmp/oracle-work/test-plan/stories.jsonl
     exit 1
   fi
 fi
@@ -187,4 +195,14 @@ for REPO in "${INVOLVED_REPOS[@]}"; do
 done
 
 echo "### Story $STORY_KEY — COMPLETE" >> /tmp/oracle-work/PIPELINE.md
+
+# Test-plan rollup line (rule 4: only mark items that actually passed)
+mkdir -p /tmp/oracle-work/test-plan
+jq -nc \
+  --arg k "$STORY_KEY" --arg t "$STORY_TITLE" \
+  --arg ac "$STORY_AC" --arg rev "$REVIEW_STATUS" \
+  '{story_key:$k, title:$t, status:"committed", lint:"pass", coverage:"pass",
+    review:$rev, acceptance_criteria:$ac}' \
+  >> /tmp/oracle-work/test-plan/stories.jsonl
+
 exit 0

@@ -28,15 +28,17 @@ All state lives under `/tmp/oracle-work/`:
 ```
               maestro-ready
                    │
-                   ▼  (phase 00)
-            maestro:implementing
-                   │
-        ┌──────────┼──────────┐
-        ▼          │          ▼
-   PRs opened  branch stale  ≥5 failures
-        │      (resume next  │
-        ▼       run)         ▼
-   maestro:deploying    maestro:blocked
+                   ▼  (phase 00 — issue-spec gate)
+        ┌──────────┴──────────┐
+        ▼                     ▼
+maestro:blocked-       maestro:implementing
+spec-incomplete                 │
+                       ┌────────┼────────┐
+                       ▼        │        ▼
+                   PRs opened branch  ≥5 failures
+                       │      stale       │
+                       ▼   (resume next)  ▼
+                  maestro:deploying  maestro:blocked
 ```
 
 Labels emitted by the pipeline:
@@ -44,7 +46,74 @@ Labels emitted by the pipeline:
 - `maestro:deploying` — phase 04 sets after PRs open
 - `maestro:blocked` — runaway (HARD_FAILURES ≥ 5)
 - `maestro:blocked-pipeline-failed` — BMAD context missing
+- `maestro:blocked-spec-incomplete` — **rule 2** — issue body fails
+  `validate-issue-spec.sh` (length / AC markers / structure)
 - `oracle-project`, `group:project-<slug>` — applied to PRs
+
+## Process Rules — Implementation Reference
+
+### Rule 1 implementation (branch naming)
+Set in [`scripts/00-discover-anchor.sh`](scripts/00-discover-anchor.sh):
+```bash
+SLUG_SHORT=$(echo "$PROJECT_SLUG" | cut -c1-40 | sed -E 's/-+$//')
+BRANCH="feat/${ANCHOR}-${SLUG_SHORT}"
+```
+Phase 02 consumes `BRANCH` from env.00 (no longer redefines it). Mode B1
+resume in phase 00 also constructs the branch with the issue number when
+detecting orphans — this means **resuming a run started before this rule
+was added requires renaming the old branch** (or just letting the old run
+finish under the legacy `feat/oracle-project-<slug>` name).
+
+### Rule 2 implementation (issue-as-spec gate)
+[`scripts/validate-issue-spec.sh`](scripts/validate-issue-spec.sh) checks:
+- `len(body) >= MIN_BODY_LEN` (default 200)
+- body matches `(\bgiven\b|\bwhen\b|\bthen\b|\bshould\b|\bmust\b|\bshall\b|^- \[)` (case-insensitive)
+- body contains at least one `^## ` heading
+
+Phase 00 calls it after the anchor is resolved but **before** marking
+`maestro:implementing`. On fail: comments the failures on the issue, applies
+`maestro:blocked-spec-incomplete`, removes `maestro-ready`, exits 1.
+
+To override the threshold: `MIN_BODY_LEN=300 bash scripts/00-discover-anchor.sh`.
+
+### Rule 3 implementation (dual PRs)
+[`scripts/04-open-prs.sh`](scripts/04-open-prs.sh) probes each repo for
+`develop`, `master`, and `main` via `gh api repos/<org>/<repo>/branches/<name>`
+and opens up to two PRs per repo (one to develop if it exists, one to
+master/main). PR bodies are identical and synced on re-runs (same body
+re-applied via `gh pr edit`).
+
+If a repo has neither develop nor master/main, phase 04 logs a warning and
+skips that repo. If a repo has only `main` (no master), the second PR
+targets `main`; if only `master` and no develop, only one PR is opened (we
+can't dual-PR if there's no second target).
+
+### Rule 4 implementation (test plan from real results)
+[`scripts/03-run-story.sh`](scripts/03-run-story.sh) writes one JSONL line
+per story to `/tmp/oracle-work/test-plan/stories.jsonl`:
+
+```json
+{"story_key":"1-1-...","title":"...","status":"committed",
+ "lint":"pass","coverage":"pass","review":"approved",
+ "acceptance_criteria":"..."}
+```
+
+`status` is `committed`, `halted`, or `failed_gates`. Phase 04 reads this
+file and folds the per-story results into a single PR body checklist:
+
+```
+- [x] Lint clean         iff every committed story had lint=pass
+- [x] Tests pass         iff every committed story had coverage=pass
+- [x] Coverage ≥ N%      iff every committed story had coverage=pass
+- [x] AC implemented     iff lint AND review both x for every story
+- [x] Code review approved  iff every committed story had review=approved
+- [ ] Manual smoke test  always unchecked (cannot be automated)
+- [ ] Manual SSE/streaming  always unchecked (cannot be automated)
+```
+
+Manual items have a templated note explaining what verification step is
+required and why it can't be automated. They stay `[ ]` so the human
+reviewer knows what's still pending.
 
 ## Anchor Discovery (phase 00)
 

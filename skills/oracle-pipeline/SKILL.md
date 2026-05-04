@@ -27,6 +27,55 @@ Do NOT use this skill for:
 - Single-file fixes (use a regular dev workflow)
 - Anything outside the Oracle backlog protocol
 
+## Process Rules (enforced by the pipeline)
+
+These rules separate business spec from technical implementation and make
+every PR independently auditable. The pipeline refuses to start or refuses
+to ship if any rule is violated.
+
+### Rule 1 — Branch name embeds the issue number
+Branch format: **`feat/<ISSUE>-<short-slug>`** (or `fix/...`).
+Enforced by [`scripts/00-discover-anchor.sh`](scripts/00-discover-anchor.sh)
+which sets `BRANCH=feat/${ANCHOR}-${SLUG_SHORT}` and exports it for all
+downstream phases.
+
+### Rule 2 — The issue is the spec
+The anchor issue MUST exist before generation and MUST contain:
+- A body ≥ 200 chars (not just a title) — describing business rules in
+  functional language, not implementation details
+- Acceptance-criteria markers: Given/When/Then, "should/must/shall", or
+  `- [ ]` checklist
+- At least one section heading (`## ...`)
+
+Enforced by [`scripts/validate-issue-spec.sh`](scripts/validate-issue-spec.sh),
+called from phase 00 before marking `maestro:implementing`. On failure: the
+pipeline comments the failures, applies `maestro:blocked-spec-incomplete`,
+and exits 1. The anchor issue must be edited by a human and the
+`maestro-ready` label re-applied to retry.
+
+### Rule 3 — Dual PRs per repo (develop + master/main)
+For every involved repo, the pipeline opens BOTH a PR to `develop` AND a PR
+to `master` (or `main` if `master` doesn't exist), from the same branch,
+with the same body, both referencing `Closes #<ANCHOR>`.
+
+Enforced by [`scripts/04-open-prs.sh`](scripts/04-open-prs.sh) which probes
+each repo's branches via `gh api` and opens up to two PRs per repo. PR
+bodies are kept in sync — re-running phase 04 edits both bodies identically.
+
+### Rule 4 — Test plan only marks what actually passed
+The PR body's test plan checklist is rendered from per-story run results
+recorded by [`scripts/03-run-story.sh`](scripts/03-run-story.sh) into
+`/tmp/oracle-work/test-plan/stories.jsonl`. Phase 04 aggregates and only
+marks `[x]` for items that passed for **every** committed story:
+- `[x] Lint clean` only if every story passed `lint-check.sh`
+- `[x] Tests pass` only if every story passed `check-coverage.sh`
+- `[x] Coverage ≥ N%` only if every story met `COVERAGE_THRESHOLD`
+- `[x] Acceptance criteria` only if dev + review both approved every story
+- `[x] Code review approved` only if every story's review was `approved`
+
+Manual items (smoke test, SSE/streaming verification) are always left `[ ]`
+with a note explaining why automation is impractical.
+
 ## Required Environment
 
 | Var | Purpose |
@@ -186,11 +235,12 @@ wave algorithm details and merge protocol.
 
 | Script | Purpose |
 |--------|---------|
-| [scripts/00-discover-anchor.sh](scripts/00-discover-anchor.sh) | gh auth, anchor discovery, resume detection |
+| [scripts/00-discover-anchor.sh](scripts/00-discover-anchor.sh) | gh auth, anchor discovery, **issue-spec gate**, branch naming, resume detection |
+| [scripts/validate-issue-spec.sh](scripts/validate-issue-spec.sh) | rule 2 — refuse to run if issue body lacks business spec |
 | [scripts/01-setup-workspace.sh](scripts/01-setup-workspace.sh) | clone backlog, fetch context, parse stories |
 | [scripts/02-prepare-repos.sh](scripts/02-prepare-repos.sh) | clone repos, install BMAD, code-graph index |
-| [scripts/03-run-story.sh](scripts/03-run-story.sh) | one full story lifecycle with gates |
-| [scripts/04-open-prs.sh](scripts/04-open-prs.sh) | push + PR group + deploy dispatch |
+| [scripts/03-run-story.sh](scripts/03-run-story.sh) | one full story lifecycle with gates + JSONL test-plan rollup |
+| [scripts/04-open-prs.sh](scripts/04-open-prs.sh) | rule 3 dual-PR (develop + master/main), rule 4 checklist render |
 | [scripts/05-finalize.sh](scripts/05-finalize.sh) | PIPELINE.md, output JSON, webhook |
 | [scripts/plan-waves.py](scripts/plan-waves.py) | group stories into parallel-safe waves |
 | [scripts/run-wave-story.sh](scripts/run-wave-story.sh) | single-story runner for parallel Task agents |
@@ -203,6 +253,7 @@ wave algorithm details and merge protocol.
 - [templates/pipeline-md.template](templates/pipeline-md.template) — PIPELINE.md skeleton
 - [templates/mcp-config.json.template](templates/mcp-config.json.template) — per-repo Serena + code-graph
 - [templates/code-review.template.md](templates/code-review.template.md) — self-review checklist
+- [templates/pr-body.template.md](templates/pr-body.template.md) — rule 4 PR body with auto-checked test plan
 - [resources/extract-stories.py](resources/extract-stories.py) — BMAD stories-output.md parser
 - [resources/clean-code-checklist.md](resources/clean-code-checklist.md) — code quality bar
 - [resources/testing-standards.md](resources/testing-standards.md) — coverage + test type guidance
@@ -270,7 +321,9 @@ This skill is intentionally lean:
 |---------|--------|
 | `GITHUB_TOKEN` invalid | exit 1 immediately |
 | Anchor not found | exit 0 (nothing to do) or exit 1 (slug given but missing) |
+| Issue spec insufficient (rule 2) | comment + label `maestro:blocked-spec-incomplete`, exit 1 |
 | BMAD context missing | comment + label `maestro:blocked-pipeline-failed`, exit 1 |
+| Repo lacks both develop and master/main | warn, skip PRs for that repo |
 | Concurrency cap (>2 active) | exit 0, leave label alone |
 | BMAD workflow files missing | exit 1 |
 | Serena / code-graph missing | exit 1 (rebuild Docker image) |

@@ -56,7 +56,8 @@ if [ -z "$ANCHOR" ]; then
       | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
     [ -z "$ISSUE_SLUG" ] && continue
 
-    BRANCH="feat/oracle-project-$ISSUE_SLUG"
+    SLUG_SHORT=$(echo "$ISSUE_SLUG" | cut -c1-40 | sed -E 's/-+$//')
+    BRANCH="feat/${issue_num}-${SLUG_SHORT}"
     REPOS=($(gh api "repos/$TARGET_ORG/the-oracle-backlog/contents/bmad-context/$ISSUE_SLUG/feature-intent.json" \
       --jq '.content' 2>/dev/null | base64 -d 2>/dev/null \
       | jq -r '.involved_repos[].full_name | split("/")[1]' 2>/dev/null || true))
@@ -104,15 +105,30 @@ PROJECT_SLUG="${PROJECT_SLUG:-$(echo "$PROJECT_NAME" \
 [ -z "$PROJECT_SLUG" ] && { echo "BLOCKED: could not derive project slug from issue labels"; exit 1; }
 echo "Anchor: #$ANCHOR | Project: $PROJECT_NAME | Slug: $PROJECT_SLUG | Resume: $RESUME_MODE"
 
+# ── Issue-spec gate (rule 2): refuse to run if issue is not a usable spec ────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! "$SCRIPT_DIR/validate-issue-spec.sh" "$ANCHOR" "$TARGET_ORG/the-oracle-backlog" 2>&1 | tee /tmp/oracle-issue-validate.log; then
+  REASON=$(grep -E '^  - ' /tmp/oracle-issue-validate.log || echo "  - issue body is not a usable spec")
+  gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
+    --body "$(printf 'Oracle pipeline **blocked**: the issue body is not a sufficient spec.\n\nFailures:\n%s\n\nThe issue is the input of the pipeline. It must describe business rules and acceptance criteria in functional language so any engineer could re-implement the feature from the issue alone. Edit the issue and re-add the `maestro-ready` label.' "$REASON")"
+  gh issue edit "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
+    --remove-label maestro-ready --add-label maestro:blocked-spec-incomplete || true
+  exit 1
+fi
+
+# Branch name (rule 1): feat/<ISSUE>-<short-slug>
+SLUG_SHORT=$(echo "$PROJECT_SLUG" | cut -c1-40 | sed -E 's/-+$//')
+BRANCH="feat/${ANCHOR}-${SLUG_SHORT}"
+
 # Mark pipeline started or confirm resume
 if [ "$RESUME_MODE" = "true" ]; then
   gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
-    --body "Oracle pipeline **resuming** for \`$PROJECT_NAME\` (previous run failed or was orphaned). Continuing from last committed story."
+    --body "Oracle pipeline **resuming** for \`$PROJECT_NAME\` (branch \`$BRANCH\`). Continuing from last committed story."
 else
   gh issue edit "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
     --add-label maestro:implementing --remove-label maestro-ready
   gh issue comment "$ANCHOR" --repo "$TARGET_ORG/the-oracle-backlog" \
-    --body "Oracle pipeline started for \`$PROJECT_NAME\`. Implementation beginning now."
+    --body "Oracle pipeline started for \`$PROJECT_NAME\` on branch \`$BRANCH\`. Implementation beginning now."
 fi
 
 # Emit sourceable env
@@ -123,5 +139,6 @@ export PROJECT_NAME=$(printf %q "$PROJECT_NAME")
 export PROJECT_SLUG=$(printf %q "$PROJECT_SLUG")
 export PROJECT_LABEL=$(printf %q "$PROJECT_LABEL")
 export RESUME_MODE=$(printf %q "$RESUME_MODE")
+export BRANCH=$(printf %q "$BRANCH")
 EOF
-echo "Env written: $OUT_ENV"
+echo "Env written: $OUT_ENV (branch: $BRANCH)"
